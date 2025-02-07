@@ -11,6 +11,11 @@ export function registerRoutes(app: Express): Server {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
+  const smartsheetClient = smartsheet.createClient({
+    accessToken: process.env.SMARTSHEET_ACCESS_TOKEN,
+    logLevel: 'info'
+  });
+
   app.get("/api/messages", async (_req, res) => {
     const messages = await storage.getMessages();
     res.json(messages);
@@ -26,13 +31,44 @@ export function registerRoutes(app: Express): Server {
     const message = await storage.createMessage(result.data);
 
     if (result.data.role === "user") {
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: result.data.content }],
-      });
+      // Extract potential Smartsheet commands from the message
+      const content = result.data.content.toLowerCase();
+      let assistantResponse = "";
+
+      try {
+        // Handle Smartsheet operations based on user message
+        if (content.includes("add column")) {
+          const config = await storage.getSmartsheetConfig();
+          if (!config) {
+            throw new Error("Smartsheet not configured");
+          }
+
+          // Extract column name from message (simplified example)
+          const columnName = content.split("add column")[1].trim();
+          await smartsheetClient.sheets.addColumn({
+            sheetId: config.sheetId,
+            body: {
+              title: columnName,
+              type: 'TEXT_NUMBER',
+              index: 0
+            }
+          });
+          assistantResponse = `Added column "${columnName}" to the sheet.`;
+        } else {
+          // Default to OpenAI response for non-Smartsheet commands
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ role: "user", content: result.data.content }],
+          });
+          assistantResponse = response.choices[0].message?.content || "Error processing request";
+        }
+      } catch (error) {
+        console.error('Error processing request:', error);
+        assistantResponse = `Error: ${error.message}`;
+      }
 
       const assistantMessage = await storage.createMessage({
-        content: response.choices[0].message?.content || "Error processing request",
+        content: assistantResponse,
         role: "assistant",
         metadata: null
       });
