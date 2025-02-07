@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { type SmartsheetConfig } from "@shared/schema";
+import ConfigForm from "./config-form";
 
 export default function SmartsheetFrame() {
   const { data: config } = useQuery<SmartsheetConfig>({
@@ -9,9 +10,9 @@ export default function SmartsheetFrame() {
 
   if (!config) {
     return (
-      <Card className="m-4 p-4">
-        <p>Please configure Smartsheet integration first</p>
-      </Card>
+      <div className="p-4">
+        <ConfigForm />
+      </div>
     );
   }
 

@@ -1,4 +1,6 @@
 import { messages, smartsheetConfig, type Message, type InsertMessage, type SmartsheetConfig, type InsertSmartsheetConfig } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   getMessages(): Promise<Message[]>;
@@ -7,46 +9,28 @@ export interface IStorage {
   setSmartsheetConfig(config: InsertSmartsheetConfig): Promise<SmartsheetConfig>;
 }
 
-export class MemStorage implements IStorage {
-  private messages: Map<number, Message>;
-  private smartsheetConfig: Map<number, SmartsheetConfig>;
-  private currentMessageId: number;
-  private currentConfigId: number;
-
-  constructor() {
-    this.messages = new Map();
-    this.smartsheetConfig = new Map();
-    this.currentMessageId = 1;
-    this.currentConfigId = 1;
-  }
-
+export class DatabaseStorage implements IStorage {
   async getMessages(): Promise<Message[]> {
-    return Array.from(this.messages.values());
+    return await db.select().from(messages).orderBy(messages.timestamp);
   }
 
   async createMessage(message: InsertMessage): Promise<Message> {
-    const id = this.currentMessageId++;
-    const timestamp = new Date();
-    const newMessage: Message = {
-      ...message,
-      id,
-      timestamp,
-      metadata: message.metadata ?? null
-    };
-    this.messages.set(id, newMessage);
+    const [newMessage] = await db.insert(messages).values(message).returning();
     return newMessage;
   }
 
   async getSmartsheetConfig(): Promise<SmartsheetConfig | undefined> {
-    return Array.from(this.smartsheetConfig.values())[0];
+    const [config] = await db.select().from(smartsheetConfig).limit(1);
+    return config;
   }
 
   async setSmartsheetConfig(config: InsertSmartsheetConfig): Promise<SmartsheetConfig> {
-    const id = this.currentConfigId++;
-    const newConfig = { ...config, id };
-    this.smartsheetConfig.set(id, newConfig);
+    // Delete existing config if any
+    await db.delete(smartsheetConfig);
+    // Insert new config
+    const [newConfig] = await db.insert(smartsheetConfig).values(config).returning();
     return newConfig;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
