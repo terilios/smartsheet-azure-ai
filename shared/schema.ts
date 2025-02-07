@@ -18,17 +18,3 @@ export const insertMessageSchema = createInsertSchema(messages).pick({
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
-
-export const smartsheetConfig = pgTable("smartsheet_config", {
-  id: serial("id").primaryKey(),
-  sheetId: text("sheet_id").notNull(),
-  accessToken: text("access_token").notNull()
-});
-
-export const insertSmartsheetConfigSchema = createInsertSchema(smartsheetConfig).pick({
-  sheetId: true,
-  accessToken: true
-});
-
-export type SmartsheetConfig = typeof smartsheetConfig.$inferSelect;
-export type InsertSmartsheetConfig = z.infer<typeof insertSmartsheetConfigSchema>;

@@ -1,12 +1,15 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMessageSchema, insertSmartsheetConfigSchema } from "@shared/schema";
+import { insertMessageSchema } from "@shared/schema";
 import OpenAI from "openai";
 import smartsheet from "smartsheet";
 
+if (!process.env.SMARTSHEET_ACCESS_TOKEN) {
+  throw new Error("SMARTSHEET_ACCESS_TOKEN environment variable must be set");
+}
+
 export function registerRoutes(app: Express): Server {
-  // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -34,41 +37,43 @@ export function registerRoutes(app: Express): Server {
       // Extract potential Smartsheet commands from the message
       const content = result.data.content.toLowerCase();
       let assistantResponse = "";
+      let metadata = null;
 
       try {
         // Handle Smartsheet operations based on user message
-        if (content.includes("add column")) {
-          const config = await storage.getSmartsheetConfig();
-          if (!config) {
-            throw new Error("Smartsheet not configured");
+        if (content.includes("open sheet") || content.includes("view sheet")) {
+          // Extract sheet ID from the message
+          const match = content.match(/sheet (\d+)/);
+          if (!match) {
+            throw new Error("Please provide a sheet ID (e.g., 'open sheet 1234567890')");
           }
 
-          // Extract column name from message (simplified example)
+          const sheetId = match[1];
+          // Verify the sheet exists and is accessible
+          await smartsheetClient.sheets.getSheet({ id: sheetId });
+          metadata = { sheetId };
+          assistantResponse = `### Success! 🎉\n\nI've loaded the Smartsheet with ID: \`${sheetId}\`\n\nYou should see it in the right panel now.`;
+        } else if (content.includes("add column")) {
+          // Extract column name and current sheet ID
           const columnName = content.split("add column")[1].trim();
+          const lastSheetId = (await storage.getMessages())
+            .filter(m => m.role === "assistant" && m.metadata?.sheetId)
+            .pop()?.metadata?.sheetId;
+
+          if (!lastSheetId) {
+            throw new Error("Please open a sheet first before adding columns");
+          }
+
           await smartsheetClient.sheets.addColumn({
-            sheetId: config.sheetId,
+            sheetId: lastSheetId,
             body: {
               title: columnName,
               type: 'TEXT_NUMBER',
               index: 0
             }
           });
+          metadata = { sheetId: lastSheetId };
           assistantResponse = `### Success! 🎉\n\nI've added a new column:\n- Name: \`${columnName}\`\n- Type: Text/Number\n- Position: Beginning of sheet\n\nYou can now see this column in your Smartsheet view.`;
-        } else if (content.includes("analyze row")) {
-          const config = await storage.getSmartsheetConfig();
-          if (!config) {
-            throw new Error("Smartsheet not configured");
-          }
-
-          // Default to OpenAI for analysis
-          const response = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [{ 
-              role: "user", 
-              content: `${result.data.content}\n\nProvide your analysis in a clear, formatted way using markdown.` 
-            }],
-          });
-          assistantResponse = response.choices[0].message?.content || "Error processing request";
         } else {
           // Default to OpenAI response for non-Smartsheet commands
           const response = await openai.chat.completions.create({
@@ -88,29 +93,13 @@ export function registerRoutes(app: Express): Server {
       const assistantMessage = await storage.createMessage({
         content: assistantResponse,
         role: "assistant",
-        metadata: null
+        metadata
       });
 
       res.json([message, assistantMessage]);
     } else {
       res.json([message]);
     }
-  });
-
-  app.get("/api/smartsheet/config", async (_req, res) => {
-    const config = await storage.getSmartsheetConfig();
-    res.json(config);
-  });
-
-  app.post("/api/smartsheet/config", async (req, res) => {
-    const result = insertSmartsheetConfigSchema.safeParse(req.body);
-    if (!result.success) {
-      res.status(400).json({ error: result.error });
-      return;
-    }
-
-    const config = await storage.setSmartsheetConfig(result.data);
-    res.json(config);
   });
 
   const httpServer = createServer(app);

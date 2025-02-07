@@ -1,24 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { type SmartsheetConfig } from "@shared/schema";
-import ConfigForm from "./config-form";
+import { type Message } from "@shared/schema";
 
 export default function SmartsheetFrame() {
-  const { data: config } = useQuery<SmartsheetConfig>({
-    queryKey: ["/api/smartsheet/config"],
+  const { data: messages } = useQuery<Message[]>({
+    queryKey: ["/api/messages"],
   });
 
-  if (!config) {
+  // Find the last sheet ID from assistant messages
+  const lastSheetId = messages
+    ?.filter(m => m.role === "assistant" && m.metadata?.sheetId)
+    .pop()?.metadata?.sheetId;
+
+  if (!lastSheetId) {
     return (
-      <div className="p-4">
-        <ConfigForm />
-      </div>
+      <Card className="m-4 p-4">
+        <p>Use the chat interface to select a Smartsheet to view</p>
+      </Card>
     );
   }
 
   return (
     <iframe
-      src={`https://app.smartsheet.com/sheets/${config.sheetId}`}
+      src={`https://app.smartsheet.com/sheets/${lastSheetId}`}
       className="w-full h-full border-0"
       title="Smartsheet"
     />
