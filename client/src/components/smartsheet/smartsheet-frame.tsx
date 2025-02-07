@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { type Message } from "@shared/schema";
 import { Loader2, ExternalLink, ArrowLeft, ArrowRight, RotateCw } from "lucide-react";
 import { useState, useRef } from "react";
@@ -126,10 +126,12 @@ export default function SmartsheetFrame() {
       <div className="flex-1 relative">
         {error ? (
           <Card className="m-4 p-4">
-            <p className="text-destructive mb-2">{error}</p>
-            <p className="text-sm text-muted-foreground">
-              Click the external link button to open this page in a new tab.
-            </p>
+            <CardContent>
+              <p className="text-destructive mb-2">{error}</p>
+              <p className="text-sm text-muted-foreground">
+                Click the external link button to open this page in a new tab.
+              </p>
+            </CardContent>
           </Card>
         ) : (
           <>
@@ -143,6 +145,7 @@ export default function SmartsheetFrame() {
               src={currentUrl}
               className="absolute inset-0 w-full h-full border-0"
               title="Web Browser"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation"
               allow="fullscreen"
               onError={handleIframeError}
               onLoad={() => {
