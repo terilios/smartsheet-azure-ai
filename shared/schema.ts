@@ -7,7 +7,7 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  metadata: json("metadata")
+  metadata: json("metadata").$type<{ sheetId?: string } | null>()
 });
 
 export const insertMessageSchema = createInsertSchema(messages).pick({

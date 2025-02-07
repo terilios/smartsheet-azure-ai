@@ -49,13 +49,28 @@ export function registerRoutes(app: Express): Server {
           }
 
           const sheetId = match[1];
-          // Verify the sheet exists and is accessible
-          await smartsheetClient.sheets.getSheet({ id: sheetId });
-          metadata = { sheetId };
-          assistantResponse = `### Success! 🎉\n\nI've loaded the Smartsheet with ID: \`${sheetId}\`\n\nYou should see it in the right panel now.`;
+
+          try {
+            // Verify the sheet exists and is accessible
+            await smartsheetClient.sheets.getSheet({ id: sheetId });
+            metadata = { sheetId };
+            assistantResponse = `### Success! 🎉\n\nI've loaded the Smartsheet with ID: \`${sheetId}\`\n\nYou should see it in the right panel now.`;
+          } catch (err: any) {
+            if (err.statusCode === 401) {
+              throw new Error("The Smartsheet access token appears to be invalid. Please contact your administrator.");
+            } else if (err.statusCode === 404) {
+              throw new Error(`Sheet with ID ${sheetId} was not found. Please verify the sheet ID and try again.`);
+            } else {
+              throw err;
+            }
+          }
         } else if (content.includes("add column")) {
           // Extract column name and current sheet ID
-          const columnName = content.split("add column")[1].trim();
+          const columnName = content.split("add column")[1]?.trim();
+          if (!columnName) {
+            throw new Error("Please specify a column name (e.g., 'add column Status')");
+          }
+
           const lastSheetId = (await storage.getMessages())
             .filter(m => m.role === "assistant" && m.metadata?.sheetId)
             .pop()?.metadata?.sheetId;
@@ -64,20 +79,30 @@ export function registerRoutes(app: Express): Server {
             throw new Error("Please open a sheet first before adding columns");
           }
 
-          await smartsheetClient.sheets.addColumn({
-            sheetId: lastSheetId,
-            body: {
-              title: columnName,
-              type: 'TEXT_NUMBER',
-              index: 0
+          try {
+            await smartsheetClient.sheets.addColumn({
+              sheetId: lastSheetId,
+              body: {
+                title: columnName,
+                type: 'TEXT_NUMBER',
+                index: 0
+              }
+            });
+            metadata = { sheetId: lastSheetId };
+            assistantResponse = `### Success! 🎉\n\nI've added a new column:\n- Name: \`${columnName}\`\n- Type: Text/Number\n- Position: Beginning of sheet\n\nYou can now see this column in your Smartsheet view.`;
+          } catch (err: any) {
+            if (err.statusCode === 401) {
+              throw new Error("The Smartsheet access token appears to be invalid. Please contact your administrator.");
+            } else if (err.statusCode === 404) {
+              throw new Error(`Sheet with ID ${lastSheetId} was not found. Please try opening the sheet again.`);
+            } else {
+              throw err;
             }
-          });
-          metadata = { sheetId: lastSheetId };
-          assistantResponse = `### Success! 🎉\n\nI've added a new column:\n- Name: \`${columnName}\`\n- Type: Text/Number\n- Position: Beginning of sheet\n\nYou can now see this column in your Smartsheet view.`;
+          }
         } else {
           // Default to OpenAI response for non-Smartsheet commands
           const response = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "gpt-4",
             messages: [{ 
               role: "user", 
               content: `${result.data.content}\n\nPlease format your response using markdown for better readability.` 
