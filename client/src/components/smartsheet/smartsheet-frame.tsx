@@ -38,7 +38,7 @@ export default function SmartsheetFrame() {
           </button>
         </div>
         <iframe
-          src="https://www.smartsheet.com/b/sign-in"
+          src="https://www.smartsheet.com/customers-home"
           className="absolute inset-0 w-full h-full border-0"
           title="Smartsheet Login"
         />
