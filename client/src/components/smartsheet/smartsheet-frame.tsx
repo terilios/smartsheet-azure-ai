@@ -12,7 +12,6 @@ export default function SmartsheetFrame() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [isFrameBlocked, setIsFrameBlocked] = useState(false);
 
   const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: ["/api/messages"],
@@ -29,37 +28,44 @@ export default function SmartsheetFrame() {
     setCurrentUrl(urlToLoad);
     setError(null);
     setIsLoading(true);
-    setIsFrameBlocked(false);
   };
 
   const openInNewTab = () => {
     window.open(currentUrl, '_blank', 'noopener,noreferrer');
   };
 
-  // Simplified navigation without trying to access iframe internals
   const handleBack = () => {
-    openInNewTab();
+    if (iframeRef.current) {
+      try {
+        iframeRef.current.contentWindow?.history.back();
+      } catch (e) {
+        openInNewTab();
+      }
+    }
   };
 
   const handleForward = () => {
-    openInNewTab();
+    if (iframeRef.current) {
+      try {
+        iframeRef.current.contentWindow?.history.forward();
+      } catch (e) {
+        openInNewTab();
+      }
+    }
   };
 
   const handleRefresh = () => {
     if (iframeRef.current) {
       setIsLoading(true);
       setError(null);
-      setIsFrameBlocked(false);
-      iframeRef.current.src = currentUrl;
+      iframeRef.current.src = `/api/proxy?url=${encodeURIComponent(currentUrl)}`;
     }
   };
 
-  // Handle frame load errors
   const handleIframeError = () => {
     setIsLoading(false);
-    setIsFrameBlocked(true);
     setError(
-      "This page cannot be displayed in the embedded view. Click the external link button to open in a new tab."
+      "There was an error loading the page. You can try refreshing or opening in a new tab."
     );
   };
 
@@ -67,13 +73,12 @@ export default function SmartsheetFrame() {
     // Set up a timer to check if the frame loaded
     const timer = setTimeout(() => {
       if (isLoading) {
-        setIsFrameBlocked(true);
         setError(
-          "The page took too long to load or doesn't allow embedding. Click the external link button to open in a new tab."
+          "The page took too long to load. You can try refreshing or opening in a new tab."
         );
         setIsLoading(false);
       }
-    }, 10000); // 10 second timeout
+    }, 30000); // 30 second timeout
 
     return () => clearTimeout(timer);
   }, [isLoading]);
@@ -86,6 +91,8 @@ export default function SmartsheetFrame() {
     );
   }
 
+  const proxyUrl = `/api/proxy?url=${encodeURIComponent(currentUrl)}`;
+
   return (
     <div className="w-full h-full flex flex-col">
       <form onSubmit={handleUrlSubmit} className="p-2 flex gap-2 border-b">
@@ -95,7 +102,6 @@ export default function SmartsheetFrame() {
             variant="outline" 
             size="icon"
             onClick={handleBack}
-            title="Open in new tab"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -104,7 +110,6 @@ export default function SmartsheetFrame() {
             variant="outline" 
             size="icon"
             onClick={handleForward}
-            title="Open in new tab"
           >
             <ArrowRight className="h-4 w-4" />
           </Button>
@@ -142,16 +147,17 @@ export default function SmartsheetFrame() {
             <CardContent className="pt-6">
               <p className="text-destructive mb-2">{error}</p>
               <p className="text-sm text-muted-foreground">
-                Many websites restrict iframe embedding for security reasons.
-                Click the external link button in the toolbar to open this page in a new tab.
+                The page could not be loaded in the embedded view.
+                You can try refreshing or opening it in a new tab.
               </p>
-              <Button
-                onClick={openInNewTab}
-                className="mt-4"
-                variant="default"
-              >
-                Open in New Tab <ExternalLink className="ml-2 h-4 w-4" />
-              </Button>
+              <div className="flex gap-2 mt-4">
+                <Button onClick={handleRefresh} variant="outline">
+                  <RotateCw className="h-4 w-4 mr-2" /> Refresh
+                </Button>
+                <Button onClick={openInNewTab} variant="default">
+                  Open in New Tab <ExternalLink className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
@@ -163,16 +169,13 @@ export default function SmartsheetFrame() {
             )}
             <iframe
               ref={iframeRef}
-              src={currentUrl}
+              src={proxyUrl}
               className="absolute inset-0 w-full h-full border-0"
               title="Web Browser"
-              sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
               onError={handleIframeError}
               onLoad={() => {
                 setIsLoading(false);
-                if (isFrameBlocked) {
-                  handleIframeError();
-                }
               }}
             />
           </>

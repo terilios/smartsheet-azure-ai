@@ -16,6 +16,68 @@ export function registerRoutes(app: Express): Server {
 
   const smartsheetClient = new SmartsheetTools(process.env.SMARTSHEET_ACCESS_TOKEN);
 
+  // Add proxy endpoint for iframe content
+  app.get("/api/proxy", async (req, res) => {
+    try {
+      const targetUrl = req.query.url as string;
+      if (!targetUrl) {
+        res.status(400).send("Missing URL parameter");
+        return;
+      }
+
+      // Validate URL
+      try {
+        new URL(targetUrl);
+      } catch {
+        res.status(400).send("Invalid URL");
+        return;
+      }
+
+      // Fetch the target URL
+      const response = await fetch(targetUrl);
+      const contentType = response.headers.get("content-type");
+
+      // Remove security headers
+      res.removeHeader("x-frame-options");
+      res.removeHeader("content-security-policy");
+
+      // Copy other relevant headers
+      if (contentType) {
+        res.setHeader("Content-Type", contentType);
+      }
+
+      // If HTML content, rewrite URLs to go through proxy
+      if (contentType?.includes("text/html")) {
+        let content = await response.text();
+
+        // Rewrite relative URLs to absolute
+        const baseUrl = new URL(targetUrl);
+        content = content.replace(
+          /(src|href|action)=["']\/([^"']*?)["']/g,
+          `$1="${baseUrl.origin}/$2"`
+        );
+
+        // Rewrite absolute URLs to go through proxy
+        content = content.replace(
+          /(src|href|action)=["'](https?:\/\/[^"']*?)["']/g,
+          `$1="/api/proxy?url=$2"`
+        );
+
+        // Send modified content
+        res.send(content);
+      } else {
+        // For non-HTML content, stream the response directly
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        res.send(buffer);
+      }
+    } catch (error) {
+      console.error("Proxy error:", error);
+      res.status(500).send("Failed to load content");
+    }
+  });
+
+  // Existing routes...
   app.get("/api/messages", async (_req, res) => {
     const messages = await storage.getMessages();
     res.json(messages);
@@ -32,7 +94,6 @@ export function registerRoutes(app: Express): Server {
 
     if (result.data.role === "user") {
       try {
-        // First, get LLM's interpretation of the request
         const completion = await openai.chat.completions.create({
           model: "gpt-4",
           messages: [{ 
@@ -50,13 +111,11 @@ export function registerRoutes(app: Express): Server {
         let assistantResponse = "";
         let metadata = null;
 
-        // Check if the LLM wants to use a tool
         if (aiResponse.tool_calls?.length) {
           const toolCall = aiResponse.tool_calls[0];
           const functionName = toolCall.function.name;
           const functionArgs = JSON.parse(toolCall.function.arguments);
 
-          // Execute the appropriate tool
           switch (functionName) {
             case "openSheet": {
               const result = await smartsheetClient.openSheet(functionArgs);
@@ -74,7 +133,6 @@ export function registerRoutes(app: Express): Server {
               throw new Error(`Unknown tool: ${functionName}`);
           }
         } else {
-          // If no tool was called, use the LLM's response directly
           assistantResponse = aiResponse.content || "I couldn't process that request.";
         }
 
