@@ -21,7 +21,16 @@ export const smartsheetTools: ChatCompletionTool[] = [
     function: {
       name: "openSheet",
       description: "Opens and displays a Smartsheet in the viewer",
-      parameters: openSheetSchema.shape,
+      parameters: {
+        type: "object",
+        properties: {
+          sheetId: {
+            type: "string",
+            description: "The Smartsheet ID to open and display"
+          }
+        },
+        required: ["sheetId"]
+      }
     },
   },
   {
@@ -29,7 +38,22 @@ export const smartsheetTools: ChatCompletionTool[] = [
     function: {
       name: "addColumn",
       description: "Adds a new column to the currently open Smartsheet",
-      parameters: addColumnSchema.shape,
+      parameters: {
+        type: "object",
+        properties: {
+          columnName: {
+            type: "string",
+            description: "The name of the column to add"
+          },
+          columnType: {
+            type: "string",
+            enum: ["TEXT_NUMBER", "DATE", "CONTACT_LIST", "CHECKBOX"],
+            default: "TEXT_NUMBER",
+            description: "The type of column to add"
+          }
+        },
+        required: ["columnName"]
+      }
     },
   },
 ];
@@ -55,7 +79,7 @@ export class SmartsheetTools {
       // Verify sheet exists and is accessible
       await this.client.sheets.getSheet({ id: params.sheetId });
       this.currentSheetId = params.sheetId;
-      
+
       return {
         success: true,
         message: `### Success! 🎉\n\nI've loaded the Smartsheet with ID: \`${params.sheetId}\`\n\nYou should see it in the right panel now.`,
