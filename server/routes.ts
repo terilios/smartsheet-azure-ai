@@ -53,18 +53,36 @@ export function registerRoutes(app: Express): Server {
               index: 0
             }
           });
-          assistantResponse = `Added column "${columnName}" to the sheet.`;
+          assistantResponse = `### Success! 🎉\n\nI've added a new column:\n- Name: \`${columnName}\`\n- Type: Text/Number\n- Position: Beginning of sheet\n\nYou can now see this column in your Smartsheet view.`;
+        } else if (content.includes("analyze row")) {
+          const config = await storage.getSmartsheetConfig();
+          if (!config) {
+            throw new Error("Smartsheet not configured");
+          }
+
+          // Default to OpenAI for analysis
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ 
+              role: "user", 
+              content: `${result.data.content}\n\nProvide your analysis in a clear, formatted way using markdown.` 
+            }],
+          });
+          assistantResponse = response.choices[0].message?.content || "Error processing request";
         } else {
           // Default to OpenAI response for non-Smartsheet commands
           const response = await openai.chat.completions.create({
             model: "gpt-4o",
-            messages: [{ role: "user", content: result.data.content }],
+            messages: [{ 
+              role: "user", 
+              content: `${result.data.content}\n\nPlease format your response using markdown for better readability.` 
+            }],
           });
           assistantResponse = response.choices[0].message?.content || "Error processing request";
         }
       } catch (error) {
         console.error('Error processing request:', error);
-        assistantResponse = `Error: ${error.message}`;
+        assistantResponse = `### Error ❌\n\n\`\`\`\n${error instanceof Error ? error.message : 'An unknown error occurred'}\n\`\`\`\n\nPlease try again or rephrase your request.`;
       }
 
       const assistantMessage = await storage.createMessage({
