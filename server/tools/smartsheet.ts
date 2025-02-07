@@ -14,9 +14,13 @@ export const addColumnSchema = z.object({
     .describe("The type of column to add"),
 });
 
+export const getSheetDataSchema = z.object({
+  sheetId: z.string().describe("The Smartsheet ID to fetch data from"),
+});
+
 // Tool implementations
 export class SmartsheetTools {
-  private client: smartsheet.Client; //Corrected type definition
+  private client: any; 
   private currentSheetId: string | null = null;
 
   constructor(accessToken: string) {
@@ -25,7 +29,6 @@ export class SmartsheetTools {
     }
 
     try {
-      // Initialize client with debug logging enabled
       this.client = smartsheet.createClient({
         accessToken,
         logLevel: 'info'
@@ -36,27 +39,68 @@ export class SmartsheetTools {
     }
   }
 
+  async getSheetData(params: z.infer<typeof getSheetDataSchema>) {
+    try {
+      console.log(`Fetching data for sheet ${params.sheetId}`);
+      const sheet = await this.client.sheets.getSheet({ id: params.sheetId });
+
+      // Transform the data into a more usable format
+      const columns = sheet.columns.map((col: any) => ({
+        id: col.id,
+        title: col.title,
+        type: col.type,
+        index: col.index,
+      }));
+
+      const rows = sheet.rows.map((row: any) => {
+        const rowData: Record<string, any> = { id: row.id };
+        row.cells.forEach((cell: any) => {
+          const column = columns.find((col: any) => col.id === cell.columnId);
+          if (column) {
+            rowData[column.title] = cell.value;
+          }
+        });
+        return rowData;
+      });
+
+      return {
+        success: true,
+        message: "Sheet data fetched successfully",
+        data: {
+          columns,
+          rows,
+          sheetName: sheet.name,
+          totalRows: sheet.totalRowCount,
+        }
+      };
+    } catch (err: any) {
+      console.error('Error fetching sheet data:', JSON.stringify(err, null, 2));
+      if (err.statusCode === 401) {
+        throw new Error("Authentication failed. Please ensure the Smartsheet access token is valid.");
+      } else if (err.statusCode === 404) {
+        throw new Error(`Sheet with ID ${params.sheetId} was not found.`);
+      }
+      throw new Error(`Failed to fetch sheet data: ${err.message}`);
+    }
+  }
+
   async openSheet(params: z.infer<typeof openSheetSchema>) {
     try {
       console.log(`Attempting to open sheet ${params.sheetId}`);
-      // Verify sheet exists and is accessible
-      const sheet = await this.client.sheets.getSheet({ id: params.sheetId });
-      console.log(`Successfully accessed sheet: ${sheet.name}`);
-
+      const result = await this.getSheetData({ sheetId: params.sheetId });
       this.currentSheetId = params.sheetId;
+
       return {
         success: true,
-        message: `### Success! 🎉\n\nI've loaded the Smartsheet: "${sheet.name}"\nID: \`${params.sheetId}\`\n\nYou should see it in the right panel now.`,
-        metadata: { sheetId: params.sheetId },
+        message: `### Success! 🎉\n\nI've loaded the Smartsheet: "${result.data.sheetName}"\nID: \`${params.sheetId}\`\n\nYou should see the data in the spreadsheet viewer now.`,
+        metadata: { 
+          sheetId: params.sheetId,
+          sheetData: result.data
+        },
       };
     } catch (err: any) {
       console.error('Error opening sheet:', JSON.stringify(err, null, 2));
-      if (err.statusCode === 401) {
-        throw new Error("Authentication failed. Please ensure the Smartsheet access token is valid and has the necessary permissions.");
-      } else if (err.statusCode === 404) {
-        throw new Error(`Sheet with ID ${params.sheetId} was not found. Please verify the sheet ID and try again.`);
-      }
-      throw new Error(`Failed to open sheet: ${err.message}`);
+      throw err;
     }
   }
 
@@ -133,6 +177,23 @@ export const smartsheetTools: ChatCompletionTool[] = [
           }
         },
         required: ["columnName"]
+      }
+    }
+  },
+    {
+    type: "function",
+    function: {
+      name: "getSheetData",
+      description: "Fetches data from a Smartsheet",
+      parameters: {
+        type: "object",
+        properties: {
+          sheetId: {
+            type: "string",
+            description: "The Smartsheet ID to fetch data from"
+          }
+        },
+        required: ["sheetId"]
       }
     }
   }
