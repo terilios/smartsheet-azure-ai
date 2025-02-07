@@ -18,7 +18,13 @@ export default function SmartsheetFrame() {
 
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setCurrentUrl(url);
+    // Add http:// if protocol is missing
+    let urlToLoad = url;
+    if (!/^https?:\/\//i.test(url)) {
+      urlToLoad = `http://${url}`;
+      setUrl(urlToLoad);
+    }
+    setCurrentUrl(urlToLoad);
     setError(null);
   };
 
@@ -98,7 +104,7 @@ export default function SmartsheetFrame() {
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="Enter Smartsheet URL..."
+          placeholder="Enter any URL..."
           className="flex-1"
         />
         <Button type="submit" variant="outline" size="icon">
@@ -126,9 +132,20 @@ export default function SmartsheetFrame() {
             ref={iframeRef}
             src={currentUrl}
             className="absolute inset-0 w-full h-full border-0"
-            title="Smartsheet"
+            title="Web Browser"
             allow="fullscreen"
             onError={handleIframeError}
+            onLoad={() => {
+              try {
+                const iframeLocation = iframeRef.current?.contentWindow?.location.href;
+                if (iframeLocation) {
+                  setUrl(iframeLocation);
+                  setCurrentUrl(iframeLocation);
+                }
+              } catch (e) {
+                // Ignore cross-origin errors
+              }
+            }}
           />
         )}
       </div>
