@@ -1,0 +1,232 @@
+Below is an example of a Python backend built with Flask that integrates both the OpenAI GPT‑4 API and the Smartsheet API. In this design, the backend exposes a single endpoint (`/process_command`) that accepts a JSON payload with the Smartsheet ID and a natural language instruction. The application then:
+
+1. Loads the OpenAI API key and Smartsheet access token from a **.env** file using [python‑dotenv](https://pypi.org/project/python-dotenv/).
+2. Uses GPT‑4 to “parse” the user’s natural language instruction into a structured JSON command (indicating an action—`add`, `modify`, or `delete`—and the necessary data).
+3. Calls the appropriate Smartsheet API endpoint (via [requests](https://pypi.org/project/requests/)) to perform the desired action on the specified sheet.
+
+> **Note:** In a production system you would typically include more robust error handling, logging, and security (for example, validating the mapping between human‐friendly column names and the actual Smartsheet column IDs). Also, the example assumes that GPT‑4 outputs a JSON structure without additional commentary. See [OpenAI’s ChatCompletion API docs](https://platform.openai.com/docs/api-reference/chat/create) and [Smartsheet API docs](https://smartsheet.redoc.ly/) for further details.
+
+Below is the complete code for the backend application:
+
+---
+
+```python
+import os
+import json
+import requests
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+import openai
+
+# Load environment variables from .env
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+SMARTSHEET_ACCESS_TOKEN = os.getenv("SMARTSHEET_ACCESS_TOKEN")
+openai.api_key = OPENAI_API_KEY
+
+app = Flask(__name__)
+
+# Base URL for Smartsheet API
+SMARTSHEET_API_URL = "https://api.smartsheet.com/2.0"
+
+
+def call_gpt4(instruction: str) -> dict:
+    """
+    Use GPT-4 to parse a natural language instruction into a structured command.
+    
+    The prompt instructs GPT-4 to return JSON with the following keys:
+      - action: one of 'add', 'modify', or 'delete'
+      - For 'add': a "data" dictionary with column (assumed to be the column ID) and value pairs.
+      - For 'modify': a "row_id" and "data" dictionary.
+      - For 'delete': a "row_id".
+    
+    Only valid JSON should be returned.
+    """
+    prompt = (
+        "You are a command parser for a Smartsheet tool. "
+        "Given the following natural language instruction, extract and output a JSON object with the following keys: "
+        "'action' (which can be 'add', 'modify', or 'delete'). For 'add', include a 'data' field that is a dictionary of column IDs "
+        "and values. For 'modify', include both a 'row_id' (the ID of the row to update) and 'data'. For 'delete', include a 'row_id'. "
+        "Return only valid JSON with no additional text.\n\n"
+        f"Instruction: {instruction}"
+    )
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "system", "content": prompt}],
+        temperature=0  # deterministic output
+    )
+
+    content = response["choices"][0]["message"]["content"]
+    try:
+        command = json.loads(content)
+    except json.JSONDecodeError as e:
+        # If parsing fails, log error details and return an empty dict.
+        print("Error parsing GPT-4 response:", e, "Response content:", content)
+        command = {}
+    return command
+
+
+def add_row(sheet_id: str, row_data: dict) -> dict:
+    """
+    Add a new row to the specified Smartsheet.
+    
+    Note: The Smartsheet API requires row cells to be provided as a list of dictionaries.
+    This function assumes that `row_data` is a dictionary where each key is a column ID (as a string or int)
+    and each value is the cell value.
+    
+    See: https://smartsheet.redoc.ly/tag/rows#operation/addRows
+    """
+    url = f"{SMARTSHEET_API_URL}/sheets/{sheet_id}/rows"
+    headers = {
+        "Authorization": f"Bearer {SMARTSHEET_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    # Convert the provided row_data dict into the expected cell list.
+    cells = []
+    for col, val in row_data.items():
+        try:
+            # Ensure column ID is an integer; in real cases you may need to map friendly names to IDs.
+            column_id = int(col)
+        except ValueError:
+            # If conversion fails, skip this cell or handle accordingly.
+            continue
+        cells.append({"columnId": column_id, "value": val})
+    
+    row_payload = {
+        "toBottom": True,
+        "cells": cells
+    }
+    payload = {"rows": [row_payload]}
+    response = requests.post(url, headers=headers, json=payload)
+    return response.json()
+
+
+def modify_row(sheet_id: str, row_id: str, row_data: dict) -> dict:
+    """
+    Update an existing row in the specified Smartsheet.
+    
+    See: https://smartsheet.redoc.ly/tag/rows#operation/updateRows
+    """
+    url = f"{SMARTSHEET_API_URL}/sheets/{sheet_id}/rows"
+    headers = {
+        "Authorization": f"Bearer {SMARTSHEET_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    cells = []
+    for col, val in row_data.items():
+        try:
+            column_id = int(col)
+        except ValueError:
+            continue
+        cells.append({"columnId": column_id, "value": val})
+    
+    row_payload = {
+        "id": int(row_id),
+        "cells": cells
+    }
+    payload = {"rows": [row_payload]}
+    response = requests.put(url, headers=headers, json=payload)
+    return response.json()
+
+
+def delete_row(sheet_id: str, row_id: str) -> dict:
+    """
+    Delete a row from the specified Smartsheet.
+    
+    See: https://smartsheet.redoc.ly/tag/rows#operation/deleteRow
+    """
+    url = f"{SMARTSHEET_API_URL}/sheets/{sheet_id}/rows"
+    headers = {"Authorization": f"Bearer {SMARTSHEET_ACCESS_TOKEN}"}
+    params = {"ids": row_id}  # The API expects a comma-separated list of row IDs.
+    response = requests.delete(url, headers=headers, params=params)
+    return response.json()
+
+
+@app.route("/process_command", methods=["POST"])
+def process_command():
+    """
+    Endpoint to process a natural language command.
+    
+    Expects a JSON payload with:
+      - sheet_id: the ID of the Smartsheet to operate on
+      - instruction: the natural language instruction
+    """
+    data = request.get_json()
+    sheet_id = data.get("sheet_id")
+    instruction = data.get("instruction")
+    if not sheet_id or not instruction:
+        return jsonify({"error": "Both 'sheet_id' and 'instruction' are required."}), 400
+
+    # Use GPT-4 to convert the natural language instruction to a structured command.
+    command = call_gpt4(instruction)
+    if not command or "action" not in command:
+        return jsonify({"error": "Failed to parse command from instruction."}), 400
+
+    action = command.get("action")
+    result = {}
+    if action == "add":
+        row_data = command.get("data")
+        if not row_data:
+            return jsonify({"error": "No data provided for add operation."}), 400
+        result = add_row(sheet_id, row_data)
+    elif action == "modify":
+        row_id = command.get("row_id")
+        row_data = command.get("data")
+        if not row_id or not row_data:
+            return jsonify({"error": "Both 'row_id' and 'data' are required for modify operation."}), 400
+        result = modify_row(sheet_id, row_id, row_data)
+    elif action == "delete":
+        row_id = command.get("row_id")
+        if not row_id:
+            return jsonify({"error": "A 'row_id' is required for delete operation."}), 400
+        result = delete_row(sheet_id, row_id)
+    else:
+        return jsonify({"error": f"Unsupported action: {action}"}), 400
+
+    return jsonify(result)
+
+
+if __name__ == "__main__":
+    # Run the Flask app on 0.0.0.0:5000 (adjust host/port as needed)
+    app.run(host="0.0.0.0", port=5000, debug=True)
+```
+
+---
+
+### How It Works
+
+1. **Environment Setup:**  
+   The application begins by loading the OpenAI API key and the Smartsheet access token from a `.env` file. For example, your **.env** might contain:
+   ```env
+   OPENAI_API_KEY=your_openai_api_key
+   SMARTSHEET_ACCESS_TOKEN=your_smartsheet_access_token
+   ```
+
+2. **Command Parsing with GPT‑4:**  
+   The function `call_gpt4()` sends a specially crafted prompt to GPT‑4 that instructs it to extract a JSON object from the user’s natural language command. The output JSON must indicate which action to take (`add`, `modify`, or `delete`) and include the required data. This design leverages GPT‑4’s capability to transform unstructured text into structured commands (see [OpenAI Chat API docs](https://platform.openai.com/docs/api-reference/chat/create) for more details).
+
+3. **Smartsheet API Operations:**  
+   Depending on the parsed command:
+   - **Add:** The `add_row()` function constructs a payload conforming to Smartsheet’s requirements (using a list of cells) and posts it to add a new row.
+   - **Modify:** The `modify_row()` function sends an update (PUT) request with the row ID and updated cell data.
+   - **Delete:** The `delete_row()` function issues a DELETE request using the row ID.
+   
+   Each function calls the appropriate endpoint on the Smartsheet API ([Smartsheet API docs](https://smartsheet.redoc.ly/)).
+
+4. **Endpoint and Request Handling:**  
+   The `/process_command` endpoint expects a JSON payload with `sheet_id` and `instruction`. It processes the instruction using GPT‑4, performs error checking on the output, and then calls the corresponding Smartsheet API function. The final result from the Smartsheet API is returned as a JSON response.
+
+### Final Remarks
+
+This sample application illustrates one way to bridge natural language commands and backend operations with external APIs. In production, you might want to add further validation, error handling, and mapping between human-friendly column names and actual Smartsheet column IDs. Additionally, consider securing the endpoint and validating incoming requests thoroughly.
+
+Source citations:  
+- [OpenAI API Documentation](https://platform.openai.com/docs/api-reference)  
+- [Smartsheet API Documentation](https://smartsheet.redoc.ly/)  
+- [Flask Documentation](https://flask.palletsprojects.com/)  
+- [python-dotenv Documentation](https://pypi.org/project/python-dotenv/)
+
+This code should serve as a strong starting point for a backend that translates natural language into actionable operations on Smartsheet via GPT‑4.

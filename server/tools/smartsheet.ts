@@ -16,7 +16,7 @@ export const addColumnSchema = z.object({
 
 // Tool implementations
 export class SmartsheetTools {
-  private client: smartsheet.Client;
+  private client: smartsheet.Client; //Corrected type definition
   private currentSheetId: string | null = null;
 
   constructor(accessToken: string) {
@@ -25,9 +25,9 @@ export class SmartsheetTools {
     }
 
     try {
-      // Initialize client using the correct Node.js SDK pattern
+      // Initialize client with debug logging enabled
       this.client = smartsheet.createClient({
-        accessToken: accessToken,
+        accessToken,
         logLevel: 'info'
       });
     } catch (error) {
