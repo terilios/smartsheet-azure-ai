@@ -10,9 +10,10 @@ export default function SmartsheetFrame() {
   const [url, setUrl] = useState("https://www.smartsheet.com/customers-home");
   const [currentUrl, setCurrentUrl] = useState(url);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const { data: messages, isLoading } = useQuery<Message[]>({
+  const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: ["/api/messages"],
   });
 
@@ -26,6 +27,7 @@ export default function SmartsheetFrame() {
     }
     setCurrentUrl(urlToLoad);
     setError(null);
+    setIsLoading(true);
   };
 
   const openInNewTab = () => {
@@ -56,14 +58,16 @@ export default function SmartsheetFrame() {
     if (iframeRef.current) {
       iframeRef.current.src = currentUrl;
       setError(null);
+      setIsLoading(true);
     }
   };
 
   const handleIframeError = () => {
+    setIsLoading(false);
     setError("Unable to load page. Some pages may not allow embedding.");
   };
 
-  if (isLoading) {
+  if (messagesLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -128,25 +132,34 @@ export default function SmartsheetFrame() {
             </p>
           </Card>
         ) : (
-          <iframe
-            ref={iframeRef}
-            src={currentUrl}
-            className="absolute inset-0 w-full h-full border-0"
-            title="Web Browser"
-            allow="fullscreen"
-            onError={handleIframeError}
-            onLoad={() => {
-              try {
-                const iframeLocation = iframeRef.current?.contentWindow?.location.href;
-                if (iframeLocation) {
-                  setUrl(iframeLocation);
-                  setCurrentUrl(iframeLocation);
+          <>
+            {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            )}
+            <iframe
+              ref={iframeRef}
+              src={currentUrl}
+              className="absolute inset-0 w-full h-full border-0"
+              title="Web Browser"
+              allow="fullscreen"
+              onError={handleIframeError}
+              onLoad={() => {
+                setIsLoading(false);
+                try {
+                  const iframeLocation = iframeRef.current?.contentWindow?.location.href;
+                  if (iframeLocation) {
+                    setUrl(iframeLocation);
+                    setCurrentUrl(iframeLocation);
+                  }
+                } catch (e) {
+                  // Ignore cross-origin errors when trying to access location
+                  console.log("Cross-origin navigation occurred");
                 }
-              } catch (e) {
-                // Ignore cross-origin errors
-              }
-            }}
-          />
+              }}
+            />
+          </>
         )}
       </div>
     </div>
