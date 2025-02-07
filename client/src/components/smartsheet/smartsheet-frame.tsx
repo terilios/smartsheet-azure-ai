@@ -28,19 +28,28 @@ export default function SmartsheetFrame() {
 
   const handleBack = () => {
     if (iframeRef.current) {
-      iframeRef.current.contentWindow?.history.back();
+      try {
+        iframeRef.current.contentWindow?.history.back();
+      } catch (e) {
+        setError("Navigation not available due to security restrictions.");
+      }
     }
   };
 
   const handleForward = () => {
     if (iframeRef.current) {
-      iframeRef.current.contentWindow?.history.forward();
+      try {
+        iframeRef.current.contentWindow?.history.forward();
+      } catch (e) {
+        setError("Navigation not available due to security restrictions.");
+      }
     }
   };
 
   const handleRefresh = () => {
     if (iframeRef.current) {
       iframeRef.current.src = currentUrl;
+      setError(null);
     }
   };
 
@@ -118,6 +127,7 @@ export default function SmartsheetFrame() {
             src={currentUrl}
             className="absolute inset-0 w-full h-full border-0"
             title="Smartsheet"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
             allow="fullscreen"
             onError={handleIframeError}
           />
