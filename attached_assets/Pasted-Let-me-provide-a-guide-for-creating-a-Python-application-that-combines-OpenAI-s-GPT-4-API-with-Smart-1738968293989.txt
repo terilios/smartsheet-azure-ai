@@ -1,0 +1,153 @@
+Let me provide a guide for creating a Python application that combines OpenAI's GPT-4 API with Smartsheet API integration.
+
+## Initial Setup
+
+First, install the required packages:
+
+```bash
+pip install openai smartsheet-python-sdk
+```
+
+## Authentication Setup
+
+```python
+from openai import OpenAI
+import smartsheet
+import os
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+# Initialize Smartsheet client
+smart = smartsheet.Smartsheet(os.getenv('SMARTSHEET_ACCESS_TOKEN'))[1][3]
+```
+
+## Smartsheet Helper Functions
+
+```python
+def get_sheet_data(sheet_id):
+    sheet = smart.Sheets.get_sheet(sheet_id)
+    return sheet
+
+def add_column(sheet_id, column_title):
+    column_spec = smartsheet.models.Column({
+        'title': column_title,
+        'type': 'TEXT_NUMBER',
+        'index': 0
+    })
+    response = smart.Sheets.add_columns(sheet_id, [column_spec])
+    return response
+
+def update_row(sheet_id, row_id, cell_data):
+    # Build new cell value
+    new_cell = smartsheet.models.Cell()
+    new_cell.value = cell_data
+    
+    # Build the row to update
+    new_row = smartsheet.models.Row()
+    new_row.id = row_id
+    new_row.cells.append(new_cell)
+    
+    # Update row
+    updated_row = smart.Sheets.update_rows(sheet_id, [new_row])
+    return updated_row
+```
+
+## Custom Tool Definition
+
+```python
+def smartsheet_tool(action, sheet_id, **kwargs):
+    actions = {
+        'get_sheet': lambda: get_sheet_data(sheet_id),
+        'add_column': lambda: add_column(sheet_id, kwargs.get('column_title')),
+        'update_row': lambda: update_row(sheet_id, kwargs.get('row_id'), 
+                                       kwargs.get('cell_data'))
+    }
+    return actions[action]()
+```
+
+## GPT-4 Integration
+
+```python
+def create_chat_completion(prompt, tools):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        tools=tools
+    )
+    return response
+
+# Define tool schema
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "smartsheet_tool",
+            "description": "Manipulate Smartsheet data",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["get_sheet", "add_column", "update_row"]
+                    },
+                    "sheet_id": {"type": "string"},
+                    "column_title": {"type": "string"},
+                    "row_id": {"type": "string"},
+                    "cell_data": {"type": "string"}
+                },
+                "required": ["action", "sheet_id"]
+            }
+        }
+    }
+]
+```
+
+## Main Application Loop
+
+```python
+def main():
+    sheet_id = "YOUR_SHEET_ID"
+    
+    while True:
+        user_input = input("Enter your request (or 'quit' to exit): ")
+        if user_input.lower() == 'quit':
+            break
+            
+        response = create_chat_completion(user_input, tools)
+        
+        # Handle tool calls
+        if response.choices[0].message.tool_calls:
+            for tool_call in response.choices[0].message.tool_calls:
+                if tool_call.function.name == "smartsheet_tool":
+                    # Execute the tool call
+                    result = smartsheet_tool(**tool_call.function.arguments)
+                    print(f"Operation result: {result}")
+        else:
+            print(response.choices[0].message.content)
+
+if __name__ == "__main__":
+    main()
+```
+
+## Usage Notes
+
+The application supports three main operations with Smartsheet:
+- Retrieving sheet data
+- Adding new columns
+- Updating row values
+
+The integration allows GPT-4 to analyze user requests and determine which Smartsheet operations to perform[1][3]. The Smartsheet SDK supports Python versions 3.7 through 3.10[1]. Make sure to set your environment variables for both API keys before running the application[1][4].
+
+Citations:
+[1] https://github.com/smartsheet/smartsheet-python-sdk
+[2] https://wandb.ai/onlineinference/gpt-python/reports/GPT-4o-Python-quickstart-using-the-OpenAI-API--VmlldzozODI1MjY4
+[3] https://github.com/smartsheet-platform/smartsheet-python-sdk
+[4] https://www.datacamp.com/tutorial/gpt4o-api-openai-tutorial
+[5] https://community.smartsheet.com/discussion/121375/smartsheet-api-call-in-python
+[6] https://community.openai.com/t/best-option-to-create-a-smartsheet-api-coding-expert/502223
+[7] https://community.smartsheet.com/discussion/90953/using-smartsheet-python-sdk-to-put-data-back-into-smartsheet
+[8] https://www.datacamp.com/tutorial/using-gpt-models-via-the-openai-api-in-python
+
+---
+Answer from Perplexity: pplx.ai/share

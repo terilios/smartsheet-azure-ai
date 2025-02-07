@@ -14,6 +14,86 @@ export const addColumnSchema = z.object({
     .describe("The type of column to add"),
 });
 
+// Tool implementations
+export class SmartsheetTools {
+  private client: smartsheet.Client;
+  private currentSheetId: string | null = null;
+
+  constructor(accessToken: string) {
+    if (!accessToken) {
+      throw new Error("SMARTSHEET_ACCESS_TOKEN environment variable must be set");
+    }
+
+    try {
+      // Initialize client using the correct Node.js SDK pattern
+      this.client = smartsheet.createClient({
+        accessToken: accessToken,
+        logLevel: 'info'
+      });
+    } catch (error) {
+      console.error('Failed to initialize Smartsheet client:', error);
+      throw new Error("Failed to initialize Smartsheet client. Please check your access token.");
+    }
+  }
+
+  async openSheet(params: z.infer<typeof openSheetSchema>) {
+    try {
+      console.log(`Attempting to open sheet ${params.sheetId}`);
+      // Verify sheet exists and is accessible
+      const sheet = await this.client.sheets.getSheet({ id: params.sheetId });
+      console.log(`Successfully accessed sheet: ${sheet.name}`);
+
+      this.currentSheetId = params.sheetId;
+      return {
+        success: true,
+        message: `### Success! 🎉\n\nI've loaded the Smartsheet: "${sheet.name}"\nID: \`${params.sheetId}\`\n\nYou should see it in the right panel now.`,
+        metadata: { sheetId: params.sheetId },
+      };
+    } catch (err: any) {
+      console.error('Error opening sheet:', JSON.stringify(err, null, 2));
+      if (err.statusCode === 401) {
+        throw new Error("Authentication failed. Please ensure the Smartsheet access token is valid and has the necessary permissions.");
+      } else if (err.statusCode === 404) {
+        throw new Error(`Sheet with ID ${params.sheetId} was not found. Please verify the sheet ID and try again.`);
+      }
+      throw new Error(`Failed to open sheet: ${err.message}`);
+    }
+  }
+
+  async addColumn(params: z.infer<typeof addColumnSchema>) {
+    if (!this.currentSheetId) {
+      throw new Error("Please open a sheet first before adding columns");
+    }
+
+    try {
+      console.log(`Adding column ${params.columnName} to sheet ${this.currentSheetId}`);
+      const response = await this.client.sheets.addColumn({
+        sheetId: this.currentSheetId,
+        body: {
+          title: params.columnName,
+          type: params.columnType,
+          index: 0,
+        },
+      });
+      console.log('Column added successfully:', response);
+
+      return {
+        success: true,
+        message: `### Success! 🎉\n\nI've added a new column:\n- Name: \`${params.columnName}\`\n- Type: ${params.columnType}\n- Position: Beginning of sheet\n\nYou can now see this column in your Smartsheet view.`,
+        metadata: { sheetId: this.currentSheetId },
+      };
+    } catch (err: any) {
+      console.error('Error adding column:', JSON.stringify(err, null, 2));
+      if (err.statusCode === 401) {
+        throw new Error("Authentication failed. Please ensure the Smartsheet access token is valid and has the necessary permissions.");
+      } else if (err.statusCode === 404) {
+        throw new Error("The current sheet was not found. Please try opening the sheet again.");
+      }
+      throw new Error(`Failed to add column: ${err.message}`);
+    }
+  }
+}
+
 // Tool definitions for OpenAI
 export const smartsheetTools: ChatCompletionTool[] = [
   {
@@ -31,7 +111,7 @@ export const smartsheetTools: ChatCompletionTool[] = [
         },
         required: ["sheetId"]
       }
-    },
+    }
   },
   {
     type: "function",
@@ -54,74 +134,6 @@ export const smartsheetTools: ChatCompletionTool[] = [
         },
         required: ["columnName"]
       }
-    },
-  },
+    }
+  }
 ];
-
-// Tool implementations
-export class SmartsheetTools {
-  private client: any;
-  private currentSheetId: string | null = null;
-
-  constructor(accessToken: string) {
-    this.client = smartsheet.createClient({
-      accessToken,
-      logLevel: "info",
-    });
-  }
-
-  setCurrentSheetId(sheetId: string) {
-    this.currentSheetId = sheetId;
-  }
-
-  async openSheet(params: z.infer<typeof openSheetSchema>) {
-    try {
-      // Verify sheet exists and is accessible
-      await this.client.sheets.getSheet({ id: params.sheetId });
-      this.currentSheetId = params.sheetId;
-
-      return {
-        success: true,
-        message: `### Success! 🎉\n\nI've loaded the Smartsheet with ID: \`${params.sheetId}\`\n\nYou should see it in the right panel now.`,
-        metadata: { sheetId: params.sheetId },
-      };
-    } catch (err: any) {
-      if (err.statusCode === 401) {
-        throw new Error("The Smartsheet access token appears to be invalid. Please contact your administrator.");
-      } else if (err.statusCode === 404) {
-        throw new Error(`Sheet with ID ${params.sheetId} was not found. Please verify the sheet ID and try again.`);
-      }
-      throw err;
-    }
-  }
-
-  async addColumn(params: z.infer<typeof addColumnSchema>) {
-    if (!this.currentSheetId) {
-      throw new Error("Please open a sheet first before adding columns");
-    }
-
-    try {
-      await this.client.sheets.addColumn({
-        sheetId: this.currentSheetId,
-        body: {
-          title: params.columnName,
-          type: params.columnType,
-          index: 0,
-        },
-      });
-
-      return {
-        success: true,
-        message: `### Success! 🎉\n\nI've added a new column:\n- Name: \`${params.columnName}\`\n- Type: ${params.columnType}\n- Position: Beginning of sheet\n\nYou can now see this column in your Smartsheet view.`,
-        metadata: { sheetId: this.currentSheetId },
-      };
-    } catch (err: any) {
-      if (err.statusCode === 401) {
-        throw new Error("The Smartsheet access token appears to be invalid. Please contact your administrator.");
-      } else if (err.statusCode === 404) {
-        throw new Error("The current sheet was not found. Please try opening the sheet again.");
-      }
-      throw err;
-    }
-  }
-}
