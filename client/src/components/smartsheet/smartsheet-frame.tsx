@@ -127,7 +127,6 @@ export default function SmartsheetFrame() {
             src={currentUrl}
             className="absolute inset-0 w-full h-full border-0"
             title="Smartsheet"
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
             allow="fullscreen"
             onError={handleIframeError}
           />
