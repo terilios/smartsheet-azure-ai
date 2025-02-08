@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, ArrowUpDown as AlignVerticalCenter } from "lucide-react";
+import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, ArrowUpDown as AlignVerticalCenter, GripVertical, WrapText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -51,6 +51,59 @@ type Selection = {
   columnIds: string[];
 };
 
+interface ResizableHeaderProps {
+  children: React.ReactNode;
+  onResize: (width: number) => void;
+  width: number;
+}
+
+function ResizableHeader({ children, onResize, width }: ResizableHeaderProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [startWidth, setStartWidth] = useState(width);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setStartX(e.pageX);
+    setStartWidth(width);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (isDragging) {
+      const diff = e.pageX - startX;
+      const newWidth = Math.max(100, startWidth + diff);
+      onResize(newWidth);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  React.useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  return (
+    <div className="flex items-center" style={{ width: `${width}px` }}>
+      <div className="flex-1">{children}</div>
+      <div
+        className="w-2 hover:bg-accent/50 cursor-col-resize"
+        onMouseDown={handleMouseDown}
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+    </div>
+  );
+}
+
 export default function SheetViewer({ data }: SheetViewerProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{
@@ -63,6 +116,10 @@ export default function SheetViewer({ data }: SheetViewerProps) {
     columnIds: []
   });
   const [cellAlignments, setCellAlignments] = useState<Record<string, CellAlignment>>({});
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() =>
+    Object.fromEntries(data.columns.map(col => [col.id, 200]))
+  );
+  const [wrapText, setWrapText] = useState(true);
 
   // Filter function
   const filteredRows = useMemo(() => {
@@ -102,14 +159,12 @@ export default function SheetViewer({ data }: SheetViewerProps) {
 
   const handleCellClick = (rowIndex: number, columnId: string, event: React.MouseEvent) => {
     if (event.shiftKey) {
-      // Add to existing selection
       setSelection(prev => ({
         type: 'cell',
         rowIndices: Array.from(new Set([...prev.rowIndices, rowIndex])),
         columnIds: Array.from(new Set([...prev.columnIds, columnId]))
       }));
     } else {
-      // New single cell selection
       setSelection({
         type: 'cell',
         rowIndices: [rowIndex],
@@ -184,6 +239,13 @@ export default function SheetViewer({ data }: SheetViewerProps) {
     return cellAlignments[key] || { vertical: 'middle', horizontal: 'left' };
   };
 
+  const handleColumnResize = (columnId: string, width: number) => {
+    setColumnWidths(prev => ({
+      ...prev,
+      [columnId]: width
+    }));
+  };
+
   return (
     <Card className="flex flex-col h-full">
       <div className="p-4 border-b space-y-4">
@@ -248,6 +310,14 @@ export default function SheetViewer({ data }: SheetViewerProps) {
               </div>
             </div>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setWrapText(!wrapText)}
+            className={wrapText ? 'bg-accent/50' : ''}
+          >
+            <WrapText className="h-4 w-4" />
+          </Button>
           <p className="text-sm text-muted-foreground">
             {sortedRows.length} of {data.totalRows} rows
           </p>
@@ -258,44 +328,50 @@ export default function SheetViewer({ data }: SheetViewerProps) {
         <Table>
           <TableHeader className="bg-muted sticky top-0 z-10">
             <TableRow>
-              <TableHead 
+              <TableHead
                 className="w-[50px] bg-muted font-medium text-muted-foreground sticky left-0 cursor-pointer hover:bg-accent/50"
                 onClick={handleSelectAll}
               >
                 #
               </TableHead>
               {data.columns.map((column) => (
-                <TableHead 
-                  key={column.id} 
-                  className="border-x border-border bg-muted"
+                <TableHead
+                  key={column.id}
+                  className="border-x border-border bg-muted p-0"
+                  style={{ width: `${columnWidths[column.id]}px` }}
                 >
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      onClick={(e) => handleColumnHeaderClick(column.id, e)}
-                      className="flex-1 font-medium justify-between px-2"
-                    >
-                      {column.title}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleSort(column.title)}
-                    >
-                      <ArrowUpDown className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <ResizableHeader
+                    width={columnWidths[column.id]}
+                    onResize={(width) => handleColumnResize(column.id, width)}
+                  >
+                    <div className="flex items-center gap-2 px-4">
+                      <Button
+                        variant="ghost"
+                        onClick={(e) => handleColumnHeaderClick(column.id, e)}
+                        className="flex-1 font-medium justify-between px-2"
+                      >
+                        {column.title}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSort(column.title)}
+                      >
+                        <ArrowUpDown className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </ResizableHeader>
                 </TableHead>
               ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {sortedRows.map((row, rowIndex) => (
-              <TableRow 
+              <TableRow
                 key={row.id}
                 className="hover:bg-muted/50"
               >
-                <TableCell 
+                <TableCell
                   className="font-medium text-muted-foreground bg-muted sticky left-0 cursor-pointer hover:bg-accent/50"
                   onClick={(e) => handleRowHeaderClick(rowIndex, e)}
                 >
@@ -314,6 +390,8 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                       style={{
                         textAlign: alignment.horizontal,
                         verticalAlign: alignment.vertical,
+                        width: `${columnWidths[column.id]}px`,
+                        whiteSpace: wrapText ? 'normal' : 'nowrap',
                       }}
                       onClick={(e) => handleCellClick(rowIndex, column.id, e)}
                     >
