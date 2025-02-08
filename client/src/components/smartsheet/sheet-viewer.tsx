@@ -43,10 +43,13 @@ type CellAlignment = {
   horizontal: 'left' | 'center' | 'right';
 };
 
+type SelectionType = 'none' | 'cell' | 'row' | 'column' | 'all';
+
 type Selection = {
-  rowIndex: number;
-  columnId: string;
-} | null;
+  type: SelectionType;
+  rowIndices: number[];
+  columnIds: string[];
+};
 
 export default function SheetViewer({ data }: SheetViewerProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -54,7 +57,11 @@ export default function SheetViewer({ data }: SheetViewerProps) {
     column: string | null;
     direction: "asc" | "desc";
   }>({ column: null, direction: "asc" });
-  const [selectedCell, setSelectedCell] = useState<Selection>(null);
+  const [selection, setSelection] = useState<Selection>({
+    type: 'none',
+    rowIndices: [],
+    columnIds: []
+  });
   const [cellAlignments, setCellAlignments] = useState<Record<string, CellAlignment>>({});
 
   // Filter function
@@ -93,26 +100,88 @@ export default function SheetViewer({ data }: SheetViewerProps) {
     }));
   };
 
-  const handleCellClick = (rowIndex: number, columnId: string) => {
-    setSelectedCell({ rowIndex, columnId });
+  const handleCellClick = (rowIndex: number, columnId: string, event: React.MouseEvent) => {
+    if (event.shiftKey) {
+      // Add to existing selection
+      setSelection(prev => ({
+        type: 'cell',
+        rowIndices: [...new Set([...prev.rowIndices, rowIndex])],
+        columnIds: [...new Set([...prev.columnIds, columnId])]
+      }));
+    } else {
+      // New single cell selection
+      setSelection({
+        type: 'cell',
+        rowIndices: [rowIndex],
+        columnIds: [columnId]
+      });
+    }
+  };
+
+  const handleRowHeaderClick = (rowIndex: number, event: React.MouseEvent) => {
+    if (event.shiftKey) {
+      setSelection(prev => ({
+        type: 'row',
+        rowIndices: [...new Set([...prev.rowIndices, rowIndex])],
+        columnIds: data.columns.map(col => col.id)
+      }));
+    } else {
+      setSelection({
+        type: 'row',
+        rowIndices: [rowIndex],
+        columnIds: data.columns.map(col => col.id)
+      });
+    }
+  };
+
+  const handleColumnHeaderClick = (columnId: string, event: React.MouseEvent) => {
+    if (event.shiftKey) {
+      setSelection(prev => ({
+        type: 'column',
+        rowIndices: Array.from({ length: sortedRows.length }, (_, i) => i),
+        columnIds: [...new Set([...prev.columnIds, columnId])]
+      }));
+    } else {
+      setSelection({
+        type: 'column',
+        rowIndices: Array.from({ length: sortedRows.length }, (_, i) => i),
+        columnIds: [columnId]
+      });
+    }
+  };
+
+  const handleSelectAll = () => {
+    setSelection({
+      type: 'all',
+      rowIndices: Array.from({ length: sortedRows.length }, (_, i) => i),
+      columnIds: data.columns.map(col => col.id)
+    });
+  };
+
+  const isCellSelected = (rowIndex: number, columnId: string) => {
+    return selection.rowIndices.includes(rowIndex) && selection.columnIds.includes(columnId);
+  };
+
+  const setAlignment = (type: 'vertical' | 'horizontal', value: string) => {
+    if (selection.type === 'none') return;
+
+    const newAlignments = { ...cellAlignments };
+    selection.rowIndices.forEach(rowIndex => {
+      selection.columnIds.forEach(columnId => {
+        const key = `${rowIndex}-${columnId}`;
+        newAlignments[key] = {
+          ...newAlignments[key],
+          [type]: value as any,
+        };
+      });
+    });
+
+    setCellAlignments(newAlignments);
   };
 
   const getCellAlignment = (rowIndex: number, columnId: string): CellAlignment => {
     const key = `${rowIndex}-${columnId}`;
     return cellAlignments[key] || { vertical: 'middle', horizontal: 'left' };
-  };
-
-  const setAlignment = (type: 'vertical' | 'horizontal', value: string) => {
-    if (!selectedCell) return;
-
-    const key = `${selectedCell.rowIndex}-${selectedCell.columnId}`;
-    setCellAlignments((prev) => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        [type]: value as any,
-      },
-    }));
   };
 
   return (
@@ -129,14 +198,13 @@ export default function SheetViewer({ data }: SheetViewerProps) {
               className="pl-8"
             />
           </div>
-          {selectedCell && (
+          {selection.type !== 'none' && (
             <div className="flex items-center gap-2">
               <div className="flex border rounded-md">
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setAlignment('horizontal', 'left')}
-                  className={`${getCellAlignment(selectedCell.rowIndex, selectedCell.columnId).horizontal === 'left' ? 'bg-accent' : ''}`}
                 >
                   <AlignLeft className="h-4 w-4" />
                 </Button>
@@ -144,7 +212,6 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   variant="ghost"
                   size="icon"
                   onClick={() => setAlignment('horizontal', 'center')}
-                  className={`${getCellAlignment(selectedCell.rowIndex, selectedCell.columnId).horizontal === 'center' ? 'bg-accent' : ''}`}
                 >
                   <AlignCenter className="h-4 w-4" />
                 </Button>
@@ -152,7 +219,6 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   variant="ghost"
                   size="icon"
                   onClick={() => setAlignment('horizontal', 'right')}
-                  className={`${getCellAlignment(selectedCell.rowIndex, selectedCell.columnId).horizontal === 'right' ? 'bg-accent' : ''}`}
                 >
                   <AlignRight className="h-4 w-4" />
                 </Button>
@@ -162,7 +228,6 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   variant="ghost"
                   size="icon"
                   onClick={() => setAlignment('vertical', 'top')}
-                  className={`${getCellAlignment(selectedCell.rowIndex, selectedCell.columnId).vertical === 'top' ? 'bg-accent' : ''}`}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </Button>
@@ -170,7 +235,6 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   variant="ghost"
                   size="icon"
                   onClick={() => setAlignment('vertical', 'middle')}
-                  className={`${getCellAlignment(selectedCell.rowIndex, selectedCell.columnId).vertical === 'middle' ? 'bg-accent' : ''}`}
                 >
                   <AlignVerticalCenter className="h-4 w-4" />
                 </Button>
@@ -178,7 +242,6 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   variant="ghost"
                   size="icon"
                   onClick={() => setAlignment('vertical', 'bottom')}
-                  className={`${getCellAlignment(selectedCell.rowIndex, selectedCell.columnId).vertical === 'bottom' ? 'bg-accent' : ''}`}
                 >
                   <ArrowDown className="h-4 w-4" />
                 </Button>
@@ -195,7 +258,10 @@ export default function SheetViewer({ data }: SheetViewerProps) {
         <Table>
           <TableHeader className="bg-muted sticky top-0 z-10">
             <TableRow>
-              <TableHead className="w-[50px] bg-muted font-medium text-muted-foreground sticky left-0">
+              <TableHead 
+                className="w-[50px] bg-muted font-medium text-muted-foreground sticky left-0 cursor-pointer hover:bg-accent/50"
+                onClick={handleSelectAll}
+              >
                 #
               </TableHead>
               {data.columns.map((column) => (
@@ -203,14 +269,22 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   key={column.id} 
                   className="border-x border-border bg-muted"
                 >
-                  <Button
-                    variant="ghost"
-                    onClick={() => handleSort(column.title)}
-                    className="flex items-center gap-2 font-medium w-full justify-between px-2"
-                  >
-                    {column.title}
-                    <ArrowUpDown className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      onClick={(e) => handleColumnHeaderClick(column.id, e)}
+                      className="flex-1 font-medium justify-between px-2"
+                    >
+                      {column.title}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleSort(column.title)}
+                    >
+                      <ArrowUpDown className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </TableHead>
               ))}
             </TableRow>
@@ -221,12 +295,15 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                 key={row.id}
                 className="hover:bg-muted/50"
               >
-                <TableCell className="font-medium text-muted-foreground bg-muted sticky left-0">
+                <TableCell 
+                  className="font-medium text-muted-foreground bg-muted sticky left-0 cursor-pointer hover:bg-accent/50"
+                  onClick={(e) => handleRowHeaderClick(rowIndex, e)}
+                >
                   {rowIndex + 1}
                 </TableCell>
                 {data.columns.map((column) => {
                   const alignment = getCellAlignment(rowIndex, column.id);
-                  const isSelected = selectedCell?.rowIndex === rowIndex && selectedCell?.columnId === column.id;
+                  const isSelected = isCellSelected(rowIndex, column.id);
 
                   return (
                     <TableCell
@@ -238,7 +315,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                         textAlign: alignment.horizontal,
                         verticalAlign: alignment.vertical,
                       }}
-                      onClick={() => handleCellClick(rowIndex, column.id)}
+                      onClick={(e) => handleCellClick(rowIndex, column.id, e)}
                     >
                       {row[column.title]}
                     </TableCell>
