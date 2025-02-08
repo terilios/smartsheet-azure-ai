@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function ConfigForm() {
   const { toast } = useToast();
-  
+
   const form = useForm({
     resolver: zodResolver(insertSmartsheetConfigSchema),
     defaultValues: {
@@ -28,7 +28,7 @@ export default function ConfigForm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/smartsheet/config"] });
       toast({
-        title: "Configuration saved",
+        title: "ChatSheetAI Configuration",
         description: "Your Smartsheet integration has been configured successfully.",
       });
     },
@@ -48,7 +48,7 @@ export default function ConfigForm() {
   return (
     <Card className="w-full max-w-xl mx-auto">
       <CardHeader>
-        <CardTitle>Configure Smartsheet Integration</CardTitle>
+        <CardTitle>Configure ChatSheetAI Integration</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>

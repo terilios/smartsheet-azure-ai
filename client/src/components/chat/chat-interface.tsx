@@ -35,7 +35,7 @@ export default function ChatInterface() {
   if (!hasSheetId) {
     return (
       <div className="max-w-md mx-auto mt-8">
-        <h2 className="text-lg font-semibold mb-4">Enter Your Smartsheet ID</h2>
+        <h2 className="text-lg font-semibold mb-4">Welcome to ChatSheetAI</h2>
         <SheetIdForm onSubmit={handleSheetIdSubmit} disabled={isPending} />
       </div>
     );
