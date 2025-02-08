@@ -1,7 +1,7 @@
 /* Container style for sheet view */
 .sheet-view {
   position: relative;
-  max-height: 80vh;
+  height: 100%;
   overflow: auto;
 }
 
