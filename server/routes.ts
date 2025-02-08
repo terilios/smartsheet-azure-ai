@@ -10,72 +10,12 @@ if (!process.env.SMARTSHEET_ACCESS_TOKEN) {
 }
 
 export function registerRoutes(app: Express): Server {
+  // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
 
   const smartsheetClient = new SmartsheetTools(process.env.SMARTSHEET_ACCESS_TOKEN || '');
-
-  // Add proxy endpoint for iframe content
-  app.get("/api/proxy", async (req, res) => {
-    try {
-      const targetUrl = req.query.url as string;
-      if (!targetUrl) {
-        res.status(400).send("Missing URL parameter");
-        return;
-      }
-
-      // Validate URL
-      try {
-        new URL(targetUrl);
-      } catch {
-        res.status(400).send("Invalid URL");
-        return;
-      }
-
-      // Fetch the target URL
-      const response = await fetch(targetUrl);
-      const contentType = response.headers.get("content-type");
-
-      // Remove security headers
-      res.removeHeader("x-frame-options");
-      res.removeHeader("content-security-policy");
-
-      // Copy other relevant headers
-      if (contentType) {
-        res.setHeader("Content-Type", contentType);
-      }
-
-      // If HTML content, rewrite URLs to go through proxy
-      if (contentType?.includes("text/html")) {
-        let content = await response.text();
-
-        // Rewrite relative URLs to absolute
-        const baseUrl = new URL(targetUrl);
-        content = content.replace(
-          /(src|href|action)=["']\/([^"']*?)["']/g,
-          `$1="${baseUrl.origin}/$2"`
-        );
-
-        // Rewrite absolute URLs to go through proxy
-        content = content.replace(
-          /(src|href|action)=["'](https?:\/\/[^"']*?)["']/g,
-          `$1="/api/proxy?url=$2"`
-        );
-
-        // Send modified content
-        res.send(content);
-      } else {
-        // For non-HTML content, stream the response directly
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        res.send(buffer);
-      }
-    } catch (error) {
-      console.error("Proxy error:", error);
-      res.status(500).send("Failed to load content");
-    }
-  });
 
   app.get("/api/messages", async (_req, res) => {
     const messages = await storage.getMessages();
@@ -113,7 +53,7 @@ export function registerRoutes(app: Express): Server {
           ?.metadata?.sheetId;
 
         const completion = await openai.chat.completions.create({
-          model: "gpt-4",
+          model: "gpt-4o",
           messages: [
             { 
               role: "system", 
@@ -181,9 +121,9 @@ Current active sheet ID: ${lastSheetId || "No sheet currently open"}`
             case "getSheetData": {
               const result = await smartsheetClient.getSheetData(functionArgs);
 
-              // Instead of showing raw data, let the AI process it and answer the question
+              // Follow up with another completion to analyze the data
               const followUpCompletion = await openai.chat.completions.create({
-                model: "gpt-4",
+                model: "gpt-4o",
                 messages: [
                   { 
                     role: "system", 
@@ -192,11 +132,11 @@ Current active sheet ID: ${lastSheetId || "No sheet currently open"}`
                   ...previousMessages.slice(-3),
                   { 
                     role: "user", 
-                    content: result.data.content 
+                    content: result.data.content || previousMessages[previousMessages.length - 1].content
                   },
                   {
                     role: "system",
-                    content: `Here is the relevant sheet data to help answer the question:\n${JSON.stringify(result.data)}`
+                    content: `Here is the relevant sheet data in JSON format to help answer the question:\n${JSON.stringify(result.data, null, 2)}`
                   }
                 ]
               });
@@ -222,7 +162,7 @@ Current active sheet ID: ${lastSheetId || "No sheet currently open"}`
       } catch (error) {
         console.error('Error processing request:', error);
         const errorMessage = await storage.createMessage({
-          content: `I encountered an error while processing your request. Please try again or rephrase your question.${error instanceof Error ? '\n\nError details: ' + error.message : ''}`,
+          content: `I encountered an error while processing your request. Please try again or rephrase your question. Error details: ${error instanceof Error ? error.message : 'Unknown error'}`,
           role: "assistant",
           metadata: null
         });
