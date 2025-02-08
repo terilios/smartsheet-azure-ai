@@ -4,6 +4,7 @@ import { db } from "./db";
 export interface IStorage {
   getMessages(): Promise<Message[]>;
   createMessage(message: InsertMessage): Promise<Message>;
+  deleteAllMessages(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -14,6 +15,10 @@ export class DatabaseStorage implements IStorage {
   async createMessage(message: InsertMessage): Promise<Message> {
     const [newMessage] = await db.insert(messages).values(message).returning();
     return newMessage;
+  }
+
+  async deleteAllMessages(): Promise<void> {
+    await db.delete(messages);
   }
 }
 
