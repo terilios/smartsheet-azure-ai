@@ -14,7 +14,8 @@ export function registerRoutes(app: Express): Server {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  const smartsheetClient = new SmartsheetTools(process.env.SMARTSHEET_ACCESS_TOKEN);
+  // Ensure SMARTSHEET_ACCESS_TOKEN is a string
+  const smartsheetClient = new SmartsheetTools(process.env.SMARTSHEET_ACCESS_TOKEN || '');
 
   // Add proxy endpoint for iframe content
   app.get("/api/proxy", async (req, res) => {
@@ -84,7 +85,8 @@ export function registerRoutes(app: Express): Server {
   });
 
   app.delete("/api/messages", async (_req, res) => {
-    await storage.clearMessages();
+    // Instead of using clearMessages, we'll delete all messages
+    await storage.deleteAllMessages();
     res.json([]);
   });
 
@@ -173,8 +175,8 @@ export function registerRoutes(app: Express): Server {
               const { columns, rows, sheetName, totalRows } = result.data;
 
               // Create a more detailed analysis of the sheet data
-              const columnAnalysis = columns.map(col => {
-                const values = rows.map(row => row[col.title]).filter(v => v !== null && v !== undefined);
+              const columnAnalysis = columns.map((col: any) => {
+                const values = rows.map((row: any) => row[col.title]).filter((v: any) => v !== null && v !== undefined);
                 return {
                   name: col.title,
                   type: col.type,
@@ -197,8 +199,8 @@ ${columnAnalysis.map(col =>
 ).join('\n')}
 
 **Sample Data (First 3 Rows):**
-${rows.slice(0, 3).map(row => {
-  const items = columns.map(col => `${col.title}: ${row[col.title] || 'N/A'}`);
+${rows.slice(0, 3).map((row: any) => {
+  const items = columns.map((col: any) => `${col.title}: ${row[col.title] || 'N/A'}`);
   return `- Row ${row.id}:\n  ${items.join('\n  ')}`;
 }).join('\n')}
 
