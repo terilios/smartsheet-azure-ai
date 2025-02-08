@@ -50,45 +50,47 @@ export default function ChatInterface() {
 
   if (view === 'welcome') {
     return (
-      <div className="max-w-2xl mx-auto mt-8">
-        <h2 className="text-2xl font-semibold mb-6">Welcome to ChatSheetAI</h2>
-        {messages && messages.length > 0 ? (
-          <div className="space-y-4 mb-6">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium">Recent Chats</h3>
-                <Button 
-                  variant="outline"
-                  onClick={() => clearMessages()}
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  New Chat
-                </Button>
-              </div>
-              <div className="divide-y border rounded-lg">
-                {Object.entries(messages.reduce<Record<string, Message[]>>((groups, message) => {
-                  const date = new Date(message.timestamp || Date.now());
-                  const key = format(date, 'PP'); // Format date as "Apr 29, 2021"
-                  if (!groups[key]) groups[key] = [];
-                  groups[key].push(message);
-                  return groups;
-                }, {})).map(([date, messages]) => (
-                  <div 
-                    key={date} 
-                    className="p-4 hover:bg-accent/50 cursor-pointer transition-colors" 
-                    onClick={() => setView('chat')}
+      <div className="h-full">
+        <div className="max-w-2xl mx-auto mt-8">
+          <h2 className="text-2xl font-semibold mb-6">Welcome to ChatSheetAI</h2>
+          {messages && messages.length > 0 ? (
+            <div className="space-y-4 mb-6">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium">Recent Chats</h3>
+                  <Button 
+                    variant="outline"
+                    onClick={() => clearMessages()}
+                    className="flex items-center gap-2"
                   >
-                    <div className="text-sm text-muted-foreground mb-1">{date}</div>
-                    <div className="text-sm line-clamp-2">{messages[0].content}</div>
-                  </div>
-                ))}
+                    <Plus className="w-4 h-4" />
+                    New Chat
+                  </Button>
+                </div>
+                <div className="divide-y border rounded-lg">
+                  {Object.entries(messages.reduce<Record<string, Message[]>>((groups, message) => {
+                    const date = new Date(message.timestamp || Date.now());
+                    const key = format(date, 'PP'); // Format date as "Apr 29, 2021"
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(message);
+                    return groups;
+                  }, {})).map(([date, msgs]) => (
+                    <div 
+                      key={date} 
+                      className="p-4 hover:bg-accent/50 cursor-pointer transition-colors" 
+                      onClick={() => setView('chat')}
+                    >
+                      <div className="text-sm text-muted-foreground mb-1">{date}</div>
+                      <div className="text-sm line-clamp-2">{msgs[0].content}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <SheetIdForm onSubmit={handleSheetIdSubmit} disabled={isPending} />
-        )}
+          ) : (
+            <SheetIdForm onSubmit={handleSheetIdSubmit} disabled={isPending} />
+          )}
+        </div>
       </div>
     );
   }

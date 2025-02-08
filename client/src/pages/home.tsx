@@ -6,10 +6,10 @@ export default function Home() {
   return (
     <div className="h-screen w-full">
       <Split initialPrimarySize="40%" minPrimarySize="30%" minSecondarySize="30%">
-        <div className="h-full bg-background p-4">
+        <div className="h-full overflow-auto bg-background p-4">
           <ChatInterface />
         </div>
-        <div className="h-full bg-background">
+        <div className="h-full overflow-auto bg-background">
           <SmartsheetFrame />
         </div>
       </Split>
