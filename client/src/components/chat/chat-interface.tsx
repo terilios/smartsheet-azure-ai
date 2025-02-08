@@ -13,6 +13,15 @@ export default function ChatInterface() {
     queryKey: ["/api/messages"],
   });
 
+  const { mutate: clearMessages } = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", "/api/messages");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+    },
+  });
+
   const { mutate: sendMessage, isPending } = useMutation({
     mutationFn: async (content: string) => {
       const res = await apiRequest("POST", "/api/messages", {
@@ -43,6 +52,14 @@ export default function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex justify-end p-2">
+        <button 
+          onClick={() => clearMessages()} 
+          className="px-3 py-1 text-sm bg-destructive text-destructive-foreground rounded hover:bg-destructive/90"
+        >
+          Clear Chat
+        </button>
+      </div>
       <div className="flex-1 overflow-auto">
         <MessageList messages={messages || []} isLoading={isLoading} />
       </div>

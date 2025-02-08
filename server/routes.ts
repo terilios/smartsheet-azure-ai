@@ -83,6 +83,11 @@ export function registerRoutes(app: Express): Server {
     res.json(messages);
   });
 
+  app.delete("/api/messages", async (_req, res) => {
+    await storage.clearMessages();
+    res.json([]);
+  });
+
   app.post("/api/messages", async (req, res) => {
     const result = insertMessageSchema.safeParse(req.body);
     if (!result.success) {
