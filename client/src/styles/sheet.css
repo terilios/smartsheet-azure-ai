@@ -1,0 +1,16 @@
+/* Sticky Headers for Sheet View */
+/* Apply sticky behavior to column headers */
+.sheet-view table thead {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
+}
+
+/* Apply sticky behavior to row headers */
+.sheet-view table tbody tr td:first-child {
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+}
