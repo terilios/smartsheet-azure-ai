@@ -327,10 +327,10 @@ export default function SheetViewer({ data }: SheetViewerProps) {
       <div className="flex-1 relative overflow-hidden">
         <div className="absolute inset-0 overflow-auto">
           <Table>
-            <TableHeader className="sticky top-0 z-20 bg-background">
-              <TableRow>
+            <TableHeader>
+              <TableRow className="bg-background">
                 <TableHead
-                  className="sticky left-0 z-30 w-[50px] bg-background border-r"
+                  className="sticky left-0 top-0 z-50 w-[50px] bg-background border-r"
                   onClick={handleSelectAll}
                 >
                   #
@@ -338,7 +338,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                 {data.columns.map((column) => (
                   <TableHead
                     key={column.id}
-                    className="border-x min-w-[200px]"
+                    className="sticky top-0 z-40 border-x min-w-[200px] bg-background"
                     style={{ width: columnWidths[column.id] }}
                   >
                     <ResizableHeader
@@ -373,7 +373,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   className="hover:bg-muted/50"
                 >
                   <TableCell
-                    className="sticky left-0 z-10 font-medium bg-background border-r"
+                    className="sticky left-0 z-30 font-medium bg-background border-r"
                     onClick={(e) => handleRowHeaderClick(rowIndex, e)}
                   >
                     {rowIndex + 1}
