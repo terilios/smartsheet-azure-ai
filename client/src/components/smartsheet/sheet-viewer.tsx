@@ -339,8 +339,11 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   {data.columns.map((column) => (
                     <TableHead
                       key={column.id}
-                      className="sticky top-0 z-40 min-w-[200px] bg-background border-x shadow-[0_1px_0_0_hsl(var(--border))]"
-                      style={{ width: columnWidths[column.id] }}
+                      className="sticky top-0 z-40 min-w-[200px] bg-background"
+                      style={{
+                        width: columnWidths[column.id],
+                        boxShadow: "0 1px 0 0 hsl(var(--border)), -1px 0 0 0 hsl(var(--border)), 1px 0 0 0 hsl(var(--border))"
+                      }}
                     >
                       <ResizableHeader
                         width={columnWidths[column.id]}
