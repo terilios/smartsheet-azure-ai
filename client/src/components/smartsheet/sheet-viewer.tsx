@@ -325,7 +325,8 @@ export default function SheetViewer({ data }: SheetViewerProps) {
       </div>
 
       <div className="flex-1 relative">
-        <div className="absolute inset-0 overflow-auto">
+        <div className="sheet-view">
+          <div className="overflow-auto">
           <div className="inline-block min-w-full">
             <Table>
               <TableHeader>
@@ -411,6 +412,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
           </div>
         </div>
       </div>
+    </div>
     </Card>
   );
 }
