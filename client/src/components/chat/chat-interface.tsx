@@ -50,25 +50,37 @@ export default function ChatInterface() {
 
   if (view === 'welcome') {
     return (
-      <div className="max-w-md mx-auto mt-8">
+      <div className="max-w-2xl mx-auto mt-8">
         <h2 className="text-2xl font-semibold mb-6">Welcome to ChatSheetAI</h2>
         {messages && messages.length > 0 ? (
           <div className="space-y-4 mb-6">
-            <Button 
-              className="w-full flex items-center gap-2" 
-              onClick={() => setView('chat')}
-            >
-              <FileText className="w-4 h-4" />
-              Continue Previous Chat
-            </Button>
-            <Button 
-              className="w-full flex items-center gap-2"
-              variant="outline"
-              onClick={() => clearMessages()}
-            >
-              <Plus className="w-4 h-4" />
-              Start New Chat
-            </Button>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium">Recent Chats</h3>
+                <Button 
+                  variant="outline"
+                  onClick={() => clearMessages()}
+                  className="flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Chat
+                </Button>
+              </div>
+              <div className="divide-y border rounded-lg">
+                {messages.reduce((groups, message) => {
+                  const date = new Date(message.timestamp || Date.now());
+                  const key = date.toLocaleDateString();
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(message);
+                  return groups;
+                }, {}).map((group, date) => (
+                  <div key={date} className="p-4 hover:bg-gray-50 cursor-pointer" onClick={() => setView('chat')}>
+                    <div className="text-sm text-gray-500 mb-1">{date}</div>
+                    <div className="text-sm line-clamp-2">{group[0].content}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <SheetIdForm onSubmit={handleSheetIdSubmit} disabled={isPending} />
