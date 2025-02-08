@@ -1,0 +1,59 @@
+The above error occurred in the <ChatInterface> component:
+
+ChatInterface@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/src/components/chat/chat-interface.tsx:28:35
+div
+div
+@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@geoffcox_react-splitter.js:499:22
+Measure@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@geoffcox_react-splitter.js:471:41
+div
+div
+div
+@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@geoffcox_react-splitter.js:499:22
+Measure@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@geoffcox_react-splitter.js:471:41
+$@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@geoffcox_react-splitter.js:507:33
+div
+Home
+Route@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js:323:14
+Switch@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js:380:27
+Router
+QueryClientProvider@https://2e7db082-d24e-419e-8c30-1586272c852e-00-2b70lcyvoqqlf.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js:2805:9
+App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+messages.reduce((groups, message) => {
+          const date = new Date(message.timestamp || Date.now());
+          const key = date.toLocaleDateString();
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(message);
+          return groups;
+        }, {}).map is not a function. (In 'messages.reduce((groups, message) => {
+          const date = new Date(message.timestamp || Date.now());
+          const key = date.toLocaleDateString();
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(message);
+          return groups;
+        }, {}).map(
+          (group, date) => /* @__PURE__ */ jsxDEV("div", { className: "p-4 hover:bg-gray-50 cursor-pointer", onClick: () => setView("chat"), children: [
+            /* @__PURE__ */ jsxDEV("div", { className: "text-sm text-gray-500 mb-1", children: date }, void 0, false, {
+              fileName: "/home/runner/workspace/client/src/components/chat/chat-interface.tsx",
+              lineNumber: 78,
+              columnNumber: 21
+            }, this),
+            /* @__PURE__ */ jsxDEV("div", { className: "text-sm line-clamp-2", children: group[0].content }, void 0, false, {
+              fileName: "/home/runner/workspace/client/src/components/chat/chat-interface.tsx",
+              lineNumber: 79,
+              columnNumber: 21
+            }, this)
+          ] }, date, true, {
+            fileName: "/home/runner/workspace/client/src/components/chat/chat-interface.tsx",
+            lineNumber: 77,
+            columnNumber: 15
+          }, this)
+        )', 'messages.reduce((groups, message) => {
+          const date = new Date(message.timestamp || Date.now());
+          const key = date.toLocaleDateString();
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(message);
+          return groups;
+        }, {}).map' is undefined)

@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import MessageList from "./message-list";
@@ -7,7 +6,8 @@ import SheetIdForm from "../smartsheet/sheet-id-form";
 import { type Message } from "@shared/schema";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { FileText, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
+import { format } from "date-fns";
 
 export default function ChatInterface() {
   const [view, setView] = useState<'welcome' | 'chat'>('welcome');
@@ -67,16 +67,20 @@ export default function ChatInterface() {
                 </Button>
               </div>
               <div className="divide-y border rounded-lg">
-                {messages.reduce((groups, message) => {
+                {Object.entries(messages.reduce<Record<string, Message[]>>((groups, message) => {
                   const date = new Date(message.timestamp || Date.now());
-                  const key = date.toLocaleDateString();
+                  const key = format(date, 'PP'); // Format date as "Apr 29, 2021"
                   if (!groups[key]) groups[key] = [];
                   groups[key].push(message);
                   return groups;
-                }, {}).map((group, date) => (
-                  <div key={date} className="p-4 hover:bg-gray-50 cursor-pointer" onClick={() => setView('chat')}>
-                    <div className="text-sm text-gray-500 mb-1">{date}</div>
-                    <div className="text-sm line-clamp-2">{group[0].content}</div>
+                }, {})).map(([date, messages]) => (
+                  <div 
+                    key={date} 
+                    className="p-4 hover:bg-accent/50 cursor-pointer transition-colors" 
+                    onClick={() => setView('chat')}
+                  >
+                    <div className="text-sm text-muted-foreground mb-1">{date}</div>
+                    <div className="text-sm line-clamp-2">{messages[0].content}</div>
                   </div>
                 ))}
               </div>
