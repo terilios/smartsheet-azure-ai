@@ -98,7 +98,7 @@ export function registerRoutes(app: Express): Server {
           model: "gpt-4",
           messages: [{ 
             role: "system", 
-            content: "You are an AI assistant that helps users work with Smartsheet. When users want to perform Smartsheet operations, use the provided tools. Otherwise, provide helpful responses about Smartsheet usage."
+            content: "You are an AI assistant that helps users work with Smartsheet. When users want to perform Smartsheet operations or get information about sheets, use the provided tools. Always use getSheetData to fetch information about a sheet before answering questions about it. Format your responses using markdown for better readability."
           },
           { 
             role: "user", 
@@ -127,6 +127,30 @@ export function registerRoutes(app: Express): Server {
               const result = await smartsheetClient.addColumn(functionArgs);
               assistantResponse = result.message;
               metadata = result.metadata;
+              break;
+            }
+            case "getSheetData": {
+              const result = await smartsheetClient.getSheetData(functionArgs);
+              const { columns, rows, sheetName, totalRows } = result.data;
+
+              assistantResponse = `### Sheet Information: "${sheetName}"
+
+**Overview:**
+- Total Rows: ${totalRows}
+- Number of Columns: ${columns.length}
+
+**Columns:**
+${columns.map(col => `- ${col.title} (${col.type})`).join('\n')}
+
+**Sample Data:**
+${rows.slice(0, 3).map(row => {
+  const items = columns.map(col => `${col.title}: ${row[col.title] || 'N/A'}`);
+  return `- Row ${row.id}:\n  ${items.join('\n  ')}`;
+}).join('\n')}
+
+${rows.length > 3 ? '\n_Showing first 3 rows..._' : ''}`;
+
+              metadata = { sheetData: result.data };
               break;
             }
             default:
