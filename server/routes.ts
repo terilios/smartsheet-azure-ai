@@ -113,10 +113,21 @@ export function registerRoutes(app: Express): Server {
           messages: [
             { 
               role: "system", 
-              content: "You are an AI assistant that helps users work with Smartsheet. When users want to perform Smartsheet operations or get information about sheets, use the provided tools. Always use getSheetData to fetch information about a sheet before answering questions about it. Format your responses using markdown for better readability." +
-                (lastSheetId ? `\nCurrent active sheet ID: ${lastSheetId}` : "")
+              content: "You are an AI assistant that helps users work with Smartsheet. Here are your capabilities:\n\n" +
+                "1. You can view and analyze sheet data using getSheetData\n" +
+                "2. You can open sheets using openSheet\n" +
+                "3. You can add columns using addColumn\n\n" +
+                "Guidelines:\n" +
+                "- Always use getSheetData to understand the sheet structure before answering questions\n" +
+                "- When users ask about specific columns or data, fetch the latest data first\n" +
+                "- Format responses using markdown for better readability\n" +
+                "- Keep track of the current context and sheet being worked on\n" +
+                "- Provide specific, data-driven responses based on the actual sheet content" +
+                (lastSheetId ? `\n\nCurrent active sheet ID: ${lastSheetId}` : "")
             },
-            ...previousMessages.slice(-5), // Include last 5 messages for context
+
+            // Include more context from previous messages
+            ...previousMessages.slice(-10), // Include last 10 messages for better context
             { 
               role: "user", 
               content: result.data.content 
@@ -156,16 +167,31 @@ export function registerRoutes(app: Express): Server {
               const result = await smartsheetClient.getSheetData(functionArgs);
               const { columns, rows, sheetName, totalRows } = result.data;
 
+              // Create a more detailed analysis of the sheet data
+              const columnAnalysis = columns.map(col => {
+                const values = rows.map(row => row[col.title]).filter(v => v !== null && v !== undefined);
+                return {
+                  name: col.title,
+                  type: col.type,
+                  nonEmptyCount: values.length,
+                  sample: values.slice(0, 3)
+                };
+              });
+
               assistantResponse = `### Sheet Information: "${sheetName}"
 
 **Overview:**
 - Total Rows: ${totalRows}
 - Number of Columns: ${columns.length}
 
-**Columns:**
-${columns.map(col => `- ${col.title} (${col.type})`).join('\n')}
+**Column Analysis:**
+${columnAnalysis.map(col => 
+`- ${col.title} (${col.type})
+  - Contains ${col.nonEmptyCount} non-empty values
+  - Sample values: ${col.sample.slice(0, 3).join(', ')}`
+).join('\n')}
 
-**Sample Data:**
+**Sample Data (First 3 Rows):**
 ${rows.slice(0, 3).map(row => {
   const items = columns.map(col => `${col.title}: ${row[col.title] || 'N/A'}`);
   return `- Row ${row.id}:\n  ${items.join('\n  ')}`;
@@ -173,7 +199,10 @@ ${rows.slice(0, 3).map(row => {
 
 ${rows.length > 3 ? '\n_Showing first 3 rows..._' : ''}`;
 
-              metadata = { sheetData: result.data };
+              metadata = { 
+                sheetData: result.data,
+                sheetAnalysis: columnAnalysis
+              };
               break;
             }
             default:
