@@ -324,86 +324,88 @@ export default function SheetViewer({ data }: SheetViewerProps) {
         </div>
       </div>
 
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative">
         <div className="absolute inset-0 overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-background">
-                <TableHead
-                  className="sticky left-0 top-0 z-50 w-[50px] bg-background border-r"
-                  onClick={handleSelectAll}
-                >
-                  #
-                </TableHead>
-                {data.columns.map((column) => (
+          <div className="inline-block min-w-full">
+            <Table>
+              <TableHeader>
+                <TableRow>
                   <TableHead
-                    key={column.id}
-                    className="sticky top-0 z-40 border-x min-w-[200px] bg-background"
-                    style={{ width: columnWidths[column.id] }}
+                    className="sticky left-0 top-0 z-50 w-[50px] bg-background border-r shadow-[1px_0_0_0_hsl(var(--border))]"
+                    onClick={handleSelectAll}
                   >
-                    <ResizableHeader
-                      width={columnWidths[column.id]}
-                      onResize={(width) => handleColumnResize(column.id, width)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          onClick={(e) => handleColumnHeaderClick(column.id, e)}
-                          className="flex-1 font-medium justify-between px-2"
-                        >
-                          {column.title}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleSort(column.title)}
-                        >
-                          <ArrowUpDown className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </ResizableHeader>
+                    #
                   </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedRows.map((row, rowIndex) => (
-                <TableRow
-                  key={row.id}
-                  className="hover:bg-muted/50"
-                >
-                  <TableCell
-                    className="sticky left-0 z-30 font-medium bg-background border-r"
-                    onClick={(e) => handleRowHeaderClick(rowIndex, e)}
-                  >
-                    {rowIndex + 1}
-                  </TableCell>
-                  {data.columns.map((column) => {
-                    const alignment = getCellAlignment(rowIndex, column.id);
-                    const isSelected = isCellSelected(rowIndex, column.id);
-
-                    return (
-                      <TableCell
-                        key={`${row.id}-${column.id}`}
-                        className={`border min-w-[200px] ${
-                          isSelected ? 'ring-2 ring-primary' : ''
-                        }`}
-                        style={{
-                          width: columnWidths[column.id],
-                          textAlign: alignment.horizontal,
-                          verticalAlign: alignment.vertical,
-                          whiteSpace: wrapText ? 'normal' : 'nowrap',
-                        }}
-                        onClick={(e) => handleCellClick(rowIndex, column.id, e)}
+                  {data.columns.map((column) => (
+                    <TableHead
+                      key={column.id}
+                      className="sticky top-0 z-40 min-w-[200px] bg-background border-x shadow-[0_1px_0_0_hsl(var(--border))]"
+                      style={{ width: columnWidths[column.id] }}
+                    >
+                      <ResizableHeader
+                        width={columnWidths[column.id]}
+                        onResize={(width) => handleColumnResize(column.id, width)}
                       >
-                        {row[column.title]}
-                      </TableCell>
-                    );
-                  })}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            onClick={(e) => handleColumnHeaderClick(column.id, e)}
+                            className="flex-1 font-medium justify-between px-2"
+                          >
+                            {column.title}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleSort(column.title)}
+                          >
+                            <ArrowUpDown className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </ResizableHeader>
+                    </TableHead>
+                  ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {sortedRows.map((row, rowIndex) => (
+                  <TableRow
+                    key={row.id}
+                    className="hover:bg-muted/50"
+                  >
+                    <TableCell
+                      className="sticky left-0 z-30 font-medium bg-background border-r shadow-[1px_0_0_0_hsl(var(--border))]"
+                      onClick={(e) => handleRowHeaderClick(rowIndex, e)}
+                    >
+                      {rowIndex + 1}
+                    </TableCell>
+                    {data.columns.map((column) => {
+                      const alignment = getCellAlignment(rowIndex, column.id);
+                      const isSelected = isCellSelected(rowIndex, column.id);
+
+                      return (
+                        <TableCell
+                          key={`${row.id}-${column.id}`}
+                          className={`border min-w-[200px] ${
+                            isSelected ? 'ring-2 ring-primary' : ''
+                          }`}
+                          style={{
+                            width: columnWidths[column.id],
+                            textAlign: alignment.horizontal,
+                            verticalAlign: alignment.vertical,
+                            whiteSpace: wrapText ? 'normal' : 'nowrap',
+                          }}
+                          onClick={(e) => handleCellClick(rowIndex, column.id, e)}
+                        >
+                          {row[column.title]}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
     </Card>
