@@ -14,7 +14,6 @@ export function registerRoutes(app: Express): Server {
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-  // Ensure SMARTSHEET_ACCESS_TOKEN is a string
   const smartsheetClient = new SmartsheetTools(process.env.SMARTSHEET_ACCESS_TOKEN || '');
 
   // Add proxy endpoint for iframe content
@@ -78,14 +77,12 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Existing routes...
   app.get("/api/messages", async (_req, res) => {
     const messages = await storage.getMessages();
     res.json(messages);
   });
 
   app.delete("/api/messages", async (_req, res) => {
-    // Instead of using clearMessages, we'll delete all messages
     await storage.deleteAllMessages();
     res.json([]);
   });
@@ -120,21 +117,32 @@ export function registerRoutes(app: Express): Server {
           messages: [
             { 
               role: "system", 
-              content: "You are an AI assistant that helps users work with Smartsheet. Here are your capabilities:\n\n" +
-                "1. You can view and analyze sheet data using getSheetData\n" +
-                "2. You can open sheets using openSheet\n" +
-                "3. You can add columns using addColumn\n\n" +
-                "Guidelines:\n" +
-                "- Always use getSheetData to understand the sheet structure before answering questions\n" +
-                "- When users ask about specific columns or data, fetch the latest data first\n" +
-                "- Format responses using markdown for better readability\n" +
-                "- Keep track of the current context and sheet being worked on\n" +
-                "- Provide specific, data-driven responses based on the actual sheet content" +
-                (lastSheetId ? `\n\nCurrent active sheet ID: ${lastSheetId}` : "")
-            },
+              content: `You are an AI assistant that helps users work with Smartsheet data. Here are your operational guidelines:
 
-            // Include more context from previous messages
-            ...previousMessages.slice(-10), // Include last 10 messages for better context
+1. Query Processing:
+   - For general questions not related to Smartsheet data, respond directly without using tools
+   - For Smartsheet-related queries, use the appropriate tool to fetch data first, then process it internally
+   - Never show raw API responses or data dumps to users
+
+2. Tool Usage:
+   - getSheetData: Use this internally to fetch data before answering questions about specific cells or content
+   - openSheet: Use only when explicitly asked to open a new sheet
+   - addColumn: Use only when explicitly asked to add new columns
+
+3. Response Formatting:
+   - Keep responses concise and focused on answering the user's specific question
+   - Use natural language in responses
+   - Format responses using markdown for better readability
+   - When referencing sheet data, integrate it naturally into your response
+
+4. Context Awareness:
+   - Keep track of the current sheet being worked on
+   - Maintain conversation context
+   - If a query requires sheet data but no sheet is open, ask the user to open a sheet first
+
+Current active sheet ID: ${lastSheetId || "No sheet currently open"}`
+            },
+            ...previousMessages.slice(-10),
             { 
               role: "user", 
               content: result.data.content 
@@ -172,44 +180,29 @@ export function registerRoutes(app: Express): Server {
             }
             case "getSheetData": {
               const result = await smartsheetClient.getSheetData(functionArgs);
-              const { columns, rows, sheetName, totalRows } = result.data;
 
-              // Create a more detailed analysis of the sheet data
-              const columnAnalysis = columns.map((col: any) => {
-                const values = rows.map((row: any) => row[col.title]).filter((v: any) => v !== null && v !== undefined);
-                return {
-                  name: col.title,
-                  type: col.type,
-                  nonEmptyCount: values.length,
-                  sample: values.slice(0, 3)
-                };
+              // Instead of showing raw data, let the AI process it and answer the question
+              const followUpCompletion = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [
+                  { 
+                    role: "system", 
+                    content: "You are helping to analyze Smartsheet data. Use the provided data to answer the user's question naturally, without showing raw data dumps. Focus only on the specific information requested."
+                  },
+                  ...previousMessages.slice(-3),
+                  { 
+                    role: "user", 
+                    content: result.data.content 
+                  },
+                  {
+                    role: "system",
+                    content: `Here is the relevant sheet data to help answer the question:\n${JSON.stringify(result.data)}`
+                  }
+                ]
               });
 
-              assistantResponse = `### Sheet Information: "${sheetName}"
-
-**Overview:**
-- Total Rows: ${totalRows}
-- Number of Columns: ${columns.length}
-
-**Column Analysis:**
-${columnAnalysis.map(col => 
-`- ${col.title} (${col.type})
-  - Contains ${col.nonEmptyCount} non-empty values
-  - Sample values: ${col.sample.slice(0, 3).join(', ')}`
-).join('\n')}
-
-**Sample Data (First 3 Rows):**
-${rows.slice(0, 3).map((row: any) => {
-  const items = columns.map((col: any) => `${col.title}: ${row[col.title] || 'N/A'}`);
-  return `- Row ${row.id}:\n  ${items.join('\n  ')}`;
-}).join('\n')}
-
-${rows.length > 3 ? '\n_Showing first 3 rows..._' : ''}`;
-
-              metadata = { 
-                sheetData: result.data,
-                sheetAnalysis: columnAnalysis
-              };
+              assistantResponse = followUpCompletion.choices[0].message.content || "I couldn't find the specific information you're looking for in the sheet.";
+              metadata = { sheetData: result.data };
               break;
             }
             default:
@@ -229,7 +222,7 @@ ${rows.length > 3 ? '\n_Showing first 3 rows..._' : ''}`;
       } catch (error) {
         console.error('Error processing request:', error);
         const errorMessage = await storage.createMessage({
-          content: `### Error ❌\n\n\`\`\`\n${error instanceof Error ? error.message : 'An unknown error occurred'}\n\`\`\`\n\nPlease try again or rephrase your request.`,
+          content: `I encountered an error while processing your request. Please try again or rephrase your question.${error instanceof Error ? '\n\nError details: ' + error.message : ''}`,
           role: "assistant",
           metadata: null
         });
