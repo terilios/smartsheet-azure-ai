@@ -16,9 +16,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, ArrowUpDown as AlignVerticalCenter, GripVertical, WrapText } from "lucide-react";
+import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, AlignVerticalJustify, GripVertical, WrapText } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+//import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Column {
   id: string;
@@ -298,7 +298,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   size="icon"
                   onClick={() => setAlignment('vertical', 'middle')}
                 >
-                  <AlignVerticalCenter className="h-4 w-4" />
+                  <AlignVerticalJustify className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -324,86 +324,88 @@ export default function SheetViewer({ data }: SheetViewerProps) {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <Table>
-          <TableHeader className="bg-muted sticky top-0 z-10">
-            <TableRow>
-              <TableHead
-                className="w-[50px] bg-muted font-medium text-muted-foreground sticky left-0 cursor-pointer hover:bg-accent/50"
-                onClick={handleSelectAll}
-              >
-                #
-              </TableHead>
-              {data.columns.map((column) => (
+      <div className="flex-1 relative overflow-hidden">
+        <div className="absolute inset-0 overflow-auto">
+          <Table>
+            <TableHeader className="sticky top-0 z-20 bg-background">
+              <TableRow>
                 <TableHead
-                  key={column.id}
-                  className="border-x border-border bg-muted p-0"
-                  style={{ width: `${columnWidths[column.id]}px` }}
+                  className="sticky left-0 z-30 w-[50px] bg-background border-r"
+                  onClick={handleSelectAll}
                 >
-                  <ResizableHeader
-                    width={columnWidths[column.id]}
-                    onResize={(width) => handleColumnResize(column.id, width)}
-                  >
-                    <div className="flex items-center gap-2 px-4">
-                      <Button
-                        variant="ghost"
-                        onClick={(e) => handleColumnHeaderClick(column.id, e)}
-                        className="flex-1 font-medium justify-between px-2"
-                      >
-                        {column.title}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleSort(column.title)}
-                      >
-                        <ArrowUpDown className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </ResizableHeader>
+                  #
                 </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedRows.map((row, rowIndex) => (
-              <TableRow
-                key={row.id}
-                className="hover:bg-muted/50"
-              >
-                <TableCell
-                  className="font-medium text-muted-foreground bg-muted sticky left-0 cursor-pointer hover:bg-accent/50"
-                  onClick={(e) => handleRowHeaderClick(rowIndex, e)}
-                >
-                  {rowIndex + 1}
-                </TableCell>
-                {data.columns.map((column) => {
-                  const alignment = getCellAlignment(rowIndex, column.id);
-                  const isSelected = isCellSelected(rowIndex, column.id);
-
-                  return (
-                    <TableCell
-                      key={`${row.id}-${column.id}`}
-                      className={`border border-border cursor-pointer ${
-                        isSelected ? 'ring-2 ring-primary' : ''
-                      }`}
-                      style={{
-                        textAlign: alignment.horizontal,
-                        verticalAlign: alignment.vertical,
-                        width: `${columnWidths[column.id]}px`,
-                        whiteSpace: wrapText ? 'normal' : 'nowrap',
-                      }}
-                      onClick={(e) => handleCellClick(rowIndex, column.id, e)}
+                {data.columns.map((column) => (
+                  <TableHead
+                    key={column.id}
+                    className="border-x min-w-[200px]"
+                    style={{ width: columnWidths[column.id] }}
+                  >
+                    <ResizableHeader
+                      width={columnWidths[column.id]}
+                      onResize={(width) => handleColumnResize(column.id, width)}
                     >
-                      {row[column.title]}
-                    </TableCell>
-                  );
-                })}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          onClick={(e) => handleColumnHeaderClick(column.id, e)}
+                          className="flex-1 font-medium justify-between px-2"
+                        >
+                          {column.title}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleSort(column.title)}
+                        >
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </ResizableHeader>
+                  </TableHead>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </ScrollArea>
+            </TableHeader>
+            <TableBody>
+              {sortedRows.map((row, rowIndex) => (
+                <TableRow
+                  key={row.id}
+                  className="hover:bg-muted/50"
+                >
+                  <TableCell
+                    className="sticky left-0 z-10 font-medium bg-background border-r"
+                    onClick={(e) => handleRowHeaderClick(rowIndex, e)}
+                  >
+                    {rowIndex + 1}
+                  </TableCell>
+                  {data.columns.map((column) => {
+                    const alignment = getCellAlignment(rowIndex, column.id);
+                    const isSelected = isCellSelected(rowIndex, column.id);
+
+                    return (
+                      <TableCell
+                        key={`${row.id}-${column.id}`}
+                        className={`border min-w-[200px] ${
+                          isSelected ? 'ring-2 ring-primary' : ''
+                        }`}
+                        style={{
+                          width: columnWidths[column.id],
+                          textAlign: alignment.horizontal,
+                          verticalAlign: alignment.vertical,
+                          whiteSpace: wrapText ? 'normal' : 'nowrap',
+                        }}
+                        onClick={(e) => handleCellClick(rowIndex, column.id, e)}
+                      >
+                        {row[column.title]}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </Card>
   );
 }
