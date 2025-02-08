@@ -94,16 +94,34 @@ export function registerRoutes(app: Express): Server {
 
     if (result.data.role === "user") {
       try {
+        // Get previous messages to maintain context
+        const messages = await storage.getMessages();
+        const previousMessages = messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          metadata: msg.metadata
+        }));
+
+        // Get the most recent sheet ID from context
+        const lastSheetId = messages
+          .reverse()
+          .find(msg => msg.metadata?.sheetId)
+          ?.metadata?.sheetId;
+
         const completion = await openai.chat.completions.create({
           model: "gpt-4",
-          messages: [{ 
-            role: "system", 
-            content: "You are an AI assistant that helps users work with Smartsheet. When users want to perform Smartsheet operations or get information about sheets, use the provided tools. Always use getSheetData to fetch information about a sheet before answering questions about it. Format your responses using markdown for better readability."
-          },
-          { 
-            role: "user", 
-            content: result.data.content 
-          }],
+          messages: [
+            { 
+              role: "system", 
+              content: "You are an AI assistant that helps users work with Smartsheet. When users want to perform Smartsheet operations or get information about sheets, use the provided tools. Always use getSheetData to fetch information about a sheet before answering questions about it. Format your responses using markdown for better readability." +
+                (lastSheetId ? `\nCurrent active sheet ID: ${lastSheetId}` : "")
+            },
+            ...previousMessages.slice(-5), // Include last 5 messages for context
+            { 
+              role: "user", 
+              content: result.data.content 
+            }
+          ],
           tools: smartsheetTools,
         });
 
@@ -115,6 +133,11 @@ export function registerRoutes(app: Express): Server {
           const toolCall = aiResponse.tool_calls[0];
           const functionName = toolCall.function.name;
           const functionArgs = JSON.parse(toolCall.function.arguments);
+
+          // If no sheet ID is provided but we have one from context, use that
+          if (functionName === "getSheetData" && !functionArgs.sheetId && lastSheetId) {
+            functionArgs.sheetId = lastSheetId;
+          }
 
           switch (functionName) {
             case "openSheet": {

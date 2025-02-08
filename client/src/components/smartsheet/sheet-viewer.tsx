@@ -105,8 +105,8 @@ export default function SheetViewer({ data }: SheetViewerProps) {
       // Add to existing selection
       setSelection(prev => ({
         type: 'cell',
-        rowIndices: [...new Set([...prev.rowIndices, rowIndex])],
-        columnIds: [...new Set([...prev.columnIds, columnId])]
+        rowIndices: Array.from(new Set([...prev.rowIndices, rowIndex])),
+        columnIds: Array.from(new Set([...prev.columnIds, columnId]))
       }));
     } else {
       // New single cell selection
@@ -122,7 +122,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
     if (event.shiftKey) {
       setSelection(prev => ({
         type: 'row',
-        rowIndices: [...new Set([...prev.rowIndices, rowIndex])],
+        rowIndices: Array.from(new Set([...prev.rowIndices, rowIndex])),
         columnIds: data.columns.map(col => col.id)
       }));
     } else {
@@ -139,7 +139,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
       setSelection(prev => ({
         type: 'column',
         rowIndices: Array.from({ length: sortedRows.length }, (_, i) => i),
-        columnIds: [...new Set([...prev.columnIds, columnId])]
+        columnIds: Array.from(new Set([...prev.columnIds, columnId]))
       }));
     } else {
       setSelection({
