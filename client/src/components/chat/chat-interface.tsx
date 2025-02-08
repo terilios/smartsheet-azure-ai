@@ -98,6 +98,11 @@ export default function ChatInterface() {
         )}
       </div>
       <div className="flex-1 overflow-auto px-4">
+        {messages?.length === 0 && hasSheetId && (
+          <div className="text-muted-foreground text-sm mb-4">
+            You can ask questions about your Smartsheet or request specific actions. Try "What's in this sheet?" to get started.
+          </div>
+        )}
         <MessageList messages={messages || []} isLoading={isLoading} />
       </div>
       <div className="border-t mt-4 px-4 py-4">

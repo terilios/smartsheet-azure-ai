@@ -24,7 +24,7 @@ export default function MessageInput({ onSend, disabled }: MessageInputProps) {
       <Input
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Message ChatSheetAI..."
+        placeholder="Type your message about the Smartsheet or ask for help..."
         className="flex-1"
         disabled={disabled}
       />
