@@ -20,14 +20,19 @@ export default function MessageInput({ onSend, disabled }: MessageInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 mt-4">
+    <form onSubmit={handleSubmit} className="flex gap-2">
       <Input
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Type your message..."
+        placeholder="Message ChatSheetAI..."
+        className="flex-1"
         disabled={disabled}
       />
-      <Button type="submit" disabled={disabled || !message.trim()}>
+      <Button 
+        type="submit" 
+        disabled={disabled || !message.trim()}
+        className="bg-blue-600 hover:bg-blue-700"
+      >
         <Send className="h-4 w-4" />
       </Button>
     </form>

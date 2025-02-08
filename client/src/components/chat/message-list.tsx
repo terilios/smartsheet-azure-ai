@@ -19,16 +19,21 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {messages.map((message) => (
-        <Card key={message.id} className="p-4">
-          <div className="flex items-start gap-2">
-            <div className="font-semibold">
-              {message.role === "user" ? "You" : "Assistant"}:
-            </div>
-            <div className="flex-1">{message.content}</div>
+        <div key={message.id} className="flex items-start gap-4">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            message.role === "user" ? "bg-gray-200" : "bg-blue-100"
+          }`}>
+            {message.role === "user" ? "U" : "A"}
           </div>
-        </Card>
+          <div className="flex-1">
+            <div className="font-medium mb-1">
+              {message.role === "user" ? "You" : "Assistant"}
+            </div>
+            <div className="text-gray-700">{message.content}</div>
+          </div>
+        </div>
       ))}
     </div>
   );

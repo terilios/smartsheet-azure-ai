@@ -52,18 +52,24 @@ export default function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex justify-end p-2">
-        <button 
-          onClick={() => clearMessages()} 
-          className="px-3 py-1 text-sm bg-destructive text-destructive-foreground rounded hover:bg-destructive/90"
-        >
-          Clear Chat
-        </button>
+      <div className="border-b pb-4 mb-4">
+        <h1 className="text-2xl font-semibold px-4 pt-4 mb-2">ChatSheetAI Assistant</h1>
+        <div className="flex justify-between items-center px-4">
+          <p className="text-sm text-gray-600">How can I help you with Smartsheet today?</p>
+          <button 
+            onClick={() => clearMessages()} 
+            className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          >
+            New Chat
+          </button>
+        </div>
       </div>
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto px-4">
         <MessageList messages={messages || []} isLoading={isLoading} />
       </div>
-      <MessageInput onSend={sendMessage} disabled={isPending} />
+      <div className="border-t mt-4 px-4 py-4">
+        <MessageInput onSend={sendMessage} disabled={isPending} />
+      </div>
     </div>
   );
 }
