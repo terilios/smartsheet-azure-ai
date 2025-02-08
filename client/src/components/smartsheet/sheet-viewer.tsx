@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, AlignVerticalJustify, GripVertical, WrapText } from "lucide-react";
+import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, AlignJustify, GripVertical, WrapText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 //import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -298,7 +298,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                   size="icon"
                   onClick={() => setAlignment('vertical', 'middle')}
                 >
-                  <AlignVerticalJustify className="h-4 w-4" />
+                  <AlignJustify className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
