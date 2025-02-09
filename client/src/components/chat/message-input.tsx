@@ -1,39 +1,46 @@
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
+import { useState, FormEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { SendHorizontal } from "lucide-react";
 
-interface MessageInputProps {
+export interface MessageInputProps {
   onSend: (message: string) => void;
-  disabled: boolean;
+  disabled?: boolean;
+  placeholder?: string;
 }
 
-export default function MessageInput({ onSend, disabled }: MessageInputProps) {
+export default function MessageInput({ onSend, disabled, placeholder }: MessageInputProps) {
   const [message, setMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (message.trim()) {
-      onSend(message);
+      onSend(message.trim());
       setMessage("");
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="flex gap-2">
-      <Input
+      <Textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Type your message about the Smartsheet or ask for help..."
-        className="flex-1"
+        placeholder={placeholder || "Type a message..."}
         disabled={disabled}
+        className="min-h-[60px] max-h-[200px]"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit(e);
+          }
+        }}
       />
       <Button 
         type="submit" 
         disabled={disabled || !message.trim()}
-        className="bg-blue-600 hover:bg-blue-700"
+        size="icon"
       >
-        <Send className="h-4 w-4" />
+        <SendHorizontal className="h-4 w-4" />
       </Button>
     </form>
   );

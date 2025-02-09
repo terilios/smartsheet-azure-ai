@@ -1,62 +1,53 @@
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
-const sheetIdSchema = z.object({
-  sheetId: z.string().min(1, "Sheet ID is required"),
-});
-
-type SheetIdFormProps = {
+interface SheetIdFormProps {
   onSubmit: (sheetId: string) => void;
-  disabled?: boolean;
-};
+  error?: string;
+  isLoading?: boolean;
+}
 
-export default function SheetIdForm({ onSubmit, disabled }: SheetIdFormProps) {
-  const form = useForm<z.infer<typeof sheetIdSchema>>({
-    resolver: zodResolver(sheetIdSchema),
-    defaultValues: {
-      sheetId: "",
-    },
-  });
+export default function SheetIdForm({ onSubmit, error, isLoading }: SheetIdFormProps) {
+  const [sheetId, setSheetId] = useState("");
 
-  function handleSubmit(values: z.infer<typeof sheetIdSchema>) {
-    onSubmit(values.sheetId);
-  }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (sheetId.trim()) {
+      onSubmit(sheetId.trim());
+    }
+  };
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="sheetId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Smartsheet ID</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="Enter your Smartsheet ID..."
-                  disabled={disabled}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
+    <Card className="w-full max-w-md mx-auto">
+      <CardHeader>
+        <CardTitle>Enter Smartsheet ID</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Input
+              type="text"
+              placeholder="Enter your Smartsheet ID..."
+              value={sheetId}
+              onChange={(e) => setSheetId(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
-        />
-        <Button type="submit" disabled={disabled}>
-          Continue
-        </Button>
-      </form>
-    </Form>
+          <Button type="submit" disabled={!sheetId.trim() || isLoading}>
+            {isLoading ? "Loading..." : "Load Sheet"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
