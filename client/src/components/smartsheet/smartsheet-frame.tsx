@@ -7,6 +7,8 @@ import SheetIdForm from "./sheet-id-form";
 import { BulkOperation } from "./bulk-operation";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useSmartsheet } from "@/lib/smartsheet-context";
+import { useSheetUpdates } from "@/hooks/use-sheet-updates";
+import { useToast } from "@/hooks/use-toast";
 
 // Function to fetch full sheet data from our backend API
 async function fetchSheetData(sheetId: string): Promise<SheetData> {
@@ -30,6 +32,10 @@ async function fetchSheetData(sheetId: string): Promise<SheetData> {
 export default function SmartsheetFrame() {
   const [error, setError] = useState<string | null>(null);
   const { currentSheetId, setCurrentSheetId, setCurrentSessionId, clearSession } = useSmartsheet();
+  const { toast } = useToast();
+
+  // Set up real-time updates
+  useSheetUpdates(currentSheetId);
 
   // Get sheet data query
   const { 
@@ -46,10 +52,10 @@ export default function SmartsheetFrame() {
         setError(null);
         return data;
       } catch (err) {
-        const error = err instanceof Error ? err : new Error("Failed to load sheet data");
-        setError(error.message);
+        const errorMessage = err instanceof Error ? err.message : "Failed to load sheet data";
+        setError(errorMessage);
         setCurrentSheetId(null);
-        throw error;
+        throw err;
       }
     },
     enabled: !!currentSheetId,
@@ -60,6 +66,7 @@ export default function SmartsheetFrame() {
   const handleSheetIdSubmit = async (sheetId: string) => {
     try {
       setError(null);
+      
       // Create session first
       const response = await fetch('/api/sessions', {
         method: 'POST',
@@ -70,16 +77,41 @@ export default function SmartsheetFrame() {
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create session');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create session');
       }
       
-      const { sessionId } = await response.json();
+      const { sessionId, success } = await response.json();
+      if (!success || !sessionId) {
+        throw new Error('Invalid session response');
+      }
+
+      // Verify session exists by trying to get it
+      const verifyResponse = await fetch(`/api/sessions/${sessionId}`);
+      if (!verifyResponse.ok) {
+        throw new Error('Failed to verify session');
+      }
+
+      const sessionData = await verifyResponse.json();
+      if (!sessionData || !sessionData.id) {
+        throw new Error('Invalid session data');
+      }
+
       setCurrentSessionId(sessionId);
       setCurrentSheetId(sheetId);
+
+      toast({
+        title: "Success",
+        description: "Sheet loaded successfully."
+      });
     } catch (err) {
-      const error = err instanceof Error ? err.message : 'Failed to create session';
-      setError(error);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create session';
+      setError(errorMessage);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
       clearSession();
     }
   };
@@ -88,7 +120,10 @@ export default function SmartsheetFrame() {
   if (currentSheetId && isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+          <p className="text-muted-foreground">Loading sheet data...</p>
+        </div>
       </div>
     );
   }
@@ -113,10 +148,17 @@ export default function SmartsheetFrame() {
       : "Failed to load Smartsheet data";
 
     return (
-      <Alert variant="destructive" className="m-4">
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>{errorMessage}</AlertDescription>
-      </Alert>
+      <div className="p-4 space-y-4">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+        <SheetIdForm 
+          onSubmit={handleSheetIdSubmit}
+          error={error || undefined}
+          isLoading={isLoading}
+        />
+      </div>
     );
   }
 

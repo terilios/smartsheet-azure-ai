@@ -8,35 +8,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, AlignJustify, GripVertical, WrapText } from "lucide-react";
 import { Card } from "@/components/ui/card";
-//import { ScrollArea } from "@/components/ui/scroll-area";
-
-interface Column {
-  id: string;
-  title: string;
-  type: string;
-  index: number;
-}
-
-interface SheetData {
-  columns: Column[];
-  rows: Record<string, any>[];
-  sheetName: string;
-  totalRows: number;
-}
-
-interface SheetViewerProps {
-  data: SheetData;
-}
+import { EditableCell } from "./editable-cell";
+import { type SheetData } from "@shared/schema";
 
 type CellAlignment = {
   vertical: 'top' | 'middle' | 'bottom';
@@ -102,6 +78,10 @@ function ResizableHeader({ children, onResize, width }: ResizableHeaderProps) {
       </div>
     </div>
   );
+}
+
+interface SheetViewerProps {
+  data: SheetData;
 }
 
 export default function SheetViewer({ data }: SheetViewerProps) {
@@ -390,7 +370,7 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                         return (
                           <TableCell
                             key={`${row.id}-${column.id}`}
-                            className={`border min-w-[200px] ${
+                            className={`border min-w-[200px] p-0 ${
                               isSelected ? 'ring-2 ring-primary' : ''
                             }`}
                             style={{
@@ -401,7 +381,15 @@ export default function SheetViewer({ data }: SheetViewerProps) {
                             }}
                             onClick={(e) => handleCellClick(rowIndex, column.id, e)}
                           >
-                            {row[column.title]}
+                            <EditableCell
+                              value={row[column.title]}
+                              columnType={column.type}
+                              columnId={column.id}
+                              rowId={row.id}
+                              sheetId={data.sheetId}
+                              isEditable={column.isEditable}
+                              options={column.options}
+                            />
                           </TableCell>
                         );
                       })}

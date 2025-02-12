@@ -1,90 +1,122 @@
-import { type Message, type ChatSession } from '../shared/schema';
-import { v4 as uuidv4 } from 'uuid';
+import { type Message, type ChatSession } from "../shared/schema";
+import { v4 as uuidv4 } from "uuid";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import { sessions as chatSessions, messages } from "../migrations/0000_initial";
 
-export interface StorageState {
-  messages: Message[];
-  sessions: ChatSession[];
-  currentSession: string | null;
-}
+export const storage = {
+  createSession: async (sheetId: string): Promise<string> => {
+    const sessionId = uuidv4();
+    await db.insert(chatSessions).values({
+      id: sessionId,
+      sheetId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    return sessionId;
+  },
 
-// In-memory storage
-const state: StorageState = {
-  messages: [],
-  sessions: [],
-  currentSession: null
+  getSession: async (sessionId: string): Promise<ChatSession | null> => {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.id, sessionId));
+
+    if (!session) return null;
+
+    const sessionMessages = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.sessionId, sessionId))
+      .orderBy(messages.timestamp);
+
+    return {
+      id: session.id,
+      sheetId: session.sheetId,
+      createdAt: session.createdAt.toISOString(),
+      updatedAt: session.updatedAt.toISOString(),
+      messages: sessionMessages.map(msg => ({
+        role: msg.role as Message["role"],
+        content: msg.content,
+        timestamp: msg.timestamp.toISOString(),
+        metadata: msg.metadata as Message["metadata"]
+      }))
+    };
+  },
+
+  addMessage: async (sessionId: string, message: Message): Promise<void> => {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.id, sessionId));
+
+    if (!session) {
+      throw new Error("Chat session not found");
+    }
+
+    await db.insert(messages).values({
+      id: uuidv4(),
+      sessionId,
+      role: message.role,
+      content: message.content,
+      timestamp: message.timestamp ? new Date(message.timestamp) : new Date(),
+      metadata: message.metadata || null
+    });
+
+    await db
+      .update(chatSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(chatSessions.id, sessionId));
+  },
+
+  getMessages: async (sessionId: string): Promise<Message[]> => {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.id, sessionId));
+
+    if (!session) {
+      throw new Error("Chat session not found");
+    }
+
+    const sessionMessages = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.sessionId, sessionId))
+      .orderBy(messages.timestamp);
+
+    return sessionMessages.map(msg => ({
+      role: msg.role as Message["role"],
+      content: msg.content,
+      timestamp: msg.timestamp.toISOString(),
+      metadata: msg.metadata as Message["metadata"]
+    }));
+  },
+
+  clearMessages: async (sessionId: string): Promise<void> => {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.id, sessionId));
+
+    if (!session) {
+      throw new Error("Chat session not found");
+    }
+
+    await db
+      .delete(messages)
+      .where(eq(messages.sessionId, sessionId));
+
+    await db
+      .update(chatSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(chatSessions.id, sessionId));
+  },
+
+  deleteSession: async (sessionId: string): Promise<void> => {
+    // Messages will be automatically deleted due to ON DELETE CASCADE
+    await db
+      .delete(chatSessions)
+      .where(eq(chatSessions.id, sessionId));
+  }
 };
-
-// Session management
-export function createSession(sheetId: string, sheetName: string): string {
-  const sessionId = uuidv4();
-  const session: ChatSession = {
-    id: sessionId,
-    sheetId,
-    sheetName,
-    created: new Date().toISOString(),
-    lastMessage: new Date().toISOString()
-  };
-  state.sessions.push(session);
-  state.currentSession = sessionId;
-  return sessionId;
-}
-
-export function getSession(sessionId: string): ChatSession | undefined {
-  return state.sessions.find(s => s.id === sessionId);
-}
-
-export function getSessions(): ChatSession[] {
-  return state.sessions;
-}
-
-export function updateSessionLastMessage(sessionId: string) {
-  const session = state.sessions.find(s => s.id === sessionId);
-  if (session) {
-    session.lastMessage = new Date().toISOString();
-  }
-}
-
-// Message management
-export function getMessages(sessionId?: string): Message[] {
-  if (sessionId) {
-    return state.messages.filter(m => m.metadata?.sessionId === sessionId);
-  }
-  return state.messages;
-}
-
-export function saveMessage(message: Message) {
-  const timestamp = new Date().toISOString();
-  const enhancedMessage: Message = {
-    ...message,
-    id: state.messages.length + 1,
-    timestamp,
-    metadata: message.metadata ? {
-      ...message.metadata,
-      timestamp
-    } : null
-  };
-  
-  state.messages.push(enhancedMessage);
-  
-  if (enhancedMessage.metadata?.sessionId) {
-    updateSessionLastMessage(enhancedMessage.metadata.sessionId);
-  }
-}
-
-export function clearMessages(sessionId?: string) {
-  if (sessionId) {
-    state.messages = state.messages.filter(m => m.metadata?.sessionId !== sessionId);
-  } else {
-    state.messages = [];
-    state.sessions = [];
-    state.currentSession = null;
-  }
-}
-
-export function getCurrentSession(): string | null {
-  return state.currentSession;
-}
-
-export function setCurrentSession(sessionId: string | null) {
-  state.currentSession = sessionId;
-}

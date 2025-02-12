@@ -1,87 +1,170 @@
-# Smartsheet Azure AI Integration
+# ChatSheetAI
 
-## Overview
+A chat interface for interacting with Smartsheet data using Azure OpenAI.
 
-This project is a full-stack application that integrates Smartsheet with Azure AI. It combines a feature-rich chat interface and robust Smartsheet interaction capabilities to deliver real-time data insights and AI-powered responses. The project leverages modern web technologies with a React-based client and a Node.js/TypeScript backend.
+## Database Setup
 
-## Features
+The application uses PostgreSQL for persistent storage of chat sessions and messages. Follow these steps to set up the database:
 
-- **Chat Interface:** Interact with an AI-powered chat built with React.
-- **Smartsheet Integration:** View, update, and manage Smartsheet data directly through the application.
-- **Azure OpenAI Integration:** Utilize Azure OpenAI for generating intelligent responses.
-- **Responsive Design:** A custom-built UI library with components such as modals, accordions, dialogs, and more.
-- **Full-Stack Architecture:** A clear separation between the client-side (React, Vite) and server-side (Node.js, Express/TypeScript) components.
-- **Configuration Flexibility:** Environment variables support for API keys and tokens.
+1. Ensure you have PostgreSQL installed and running locally.
 
-## File Structure
+2. Set up the environment files:
 
-- **Root Files:**
-  - `.gitignore` – Specifies files and directories to be ignored by Git.
-  - `tsconfig.json`, `vite.config.ts`, `tailwind.config.ts`, `postcss.config.js`, `drizzle.config.ts`, `theme.json` – Configuration files for TypeScript, Vite, Tailwind CSS, PostCSS, and application theming.
-- **Client:** Located in the `client/` directory.
-  - `index.html` – The main HTML entry point.
-  - `src/` – Contains the React application.
-    - `App.tsx` – The root React component.
-    - `main.tsx` – Entry point for the React application.
-    - `components/` – Houses various UI components including chat and Smartsheet-specific components.
-    - `hooks/`, `lib/`, and `pages/` – Custom React hooks, library functions, and different page components.
-- **Server:** Located in the `server/` directory.
-  - `index.ts`, `routes.ts` – Entry point and route definitions for the backend.
-  - `db.ts`, `storage.ts` – Database and storage configuration.
-  - `tools/smartsheet.ts` – Backend tools for handling Smartsheet integration.
-  - `vite.ts` – Server-side Vite configuration.
-- **Shared:** Located in the `shared/` directory.
-  - `schema.ts` – Shared schema definitions and utility types.
-- **Attached Assets:** The `attached_assets/` directory includes various example guides and assets related to integration and debugging.
+### Server Configuration (`server/.env`)
 
-## Installation
+Create a `server/.env` file with your configuration (see `server/.env.example` for template):
 
-1. **Clone the Repository**
+```env
+# Database Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/chatsheetai
+TEST_DATABASE_URL=postgresql://username:password@localhost:5432/chatsheetai_test
 
-   ```
-   git clone <repository-url>
-   ```
+# Azure OpenAI Configuration
+AZURE_OPENAI_API_BASE=your_azure_openai_base_url
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+AZURE_OPENAI_API_VERSION=2025-01-01-preview
+AZURE_OPENAI_DEPLOYMENT=your_deployment_name
+AZURE_OPENAI_MODEL=your_model_name
 
-2. **Navigate to the Project Directory**
-
-   ```
-   cd /Users/timothydriscoll/Documents/GitHub/smartsheet-azure-ai
-   ```
-
-3. **Install Dependencies**
-   ```
-   npm install
-   ```
-
-## Running the Application
-
-- **Development Mode:**
-
-  ```
-  npm run dev
-  ```
-
-  Runs both the client and server with live reload capabilities.
-
-- **Production Build:**
-  ```
-  npm run build
-  ```
-  Builds the client for production deployment. Make sure to properly configure environment variables before building.
-
-## Environment Variables
-
-Create a `.env` file in the project root to define environment-specific variables. For example:
-
-```
-AZURE_OPENAI_API_KEY=your-azure-openai-api-key
-SMARTSHEET_API_TOKEN=your-smartsheet-api-token
+# Smartsheet Configuration
+SMARTSHEET_ACCESS_TOKEN=your_smartsheet_access_token
+SMARTSHEET_WEBHOOK_SECRET=your_webhook_secret
 ```
 
-## Contributing
+### Client Configuration (`client/.env`)
 
-Contributions are welcome! Please create an issue or submit a pull request for improvements, bug fixes, or new features.
+Create a `client/.env` file with frontend configuration (see `client/.env.example` for template):
 
-## License
+```env
+# Frontend Environment Variables
+VITE_API_URL=http://localhost:3000
+```
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+3. Create the database:
+
+```bash
+createdb chatsheetai
+```
+
+4. Generate and run migrations:
+
+```bash
+# Generate the SQL migration from the Drizzle schema
+npm run generate
+
+# Apply migrations to the database
+npm run migrate
+```
+
+### Migration Commands
+
+- `npm run generate` - Generates new migrations based on schema changes
+- `npm run migrate` - Applies pending migrations to the database
+- `npm run db:generate` - Generates Drizzle migration files only (without running them)
+- `npm run db:push` - Push schema changes directly to the database (development only)
+
+### Database Schema
+
+The database consists of two main tables:
+
+#### Sessions Table
+
+- `id` (text, primary key) - Unique session identifier
+- `sheetId` (text) - Associated Smartsheet ID
+- `createdAt` (timestamp) - Session creation timestamp
+- `updatedAt` (timestamp) - Last update timestamp
+
+#### Messages Table
+
+- `id` (text, primary key) - Unique message identifier
+- `sessionId` (text, foreign key) - Reference to sessions table
+- `role` (text) - Message role (system/user/assistant)
+- `content` (text) - Message content
+- `timestamp` (timestamp) - Message timestamp
+- `metadata` (jsonb) - Additional message metadata
+
+Messages are automatically deleted when their associated session is deleted (ON DELETE CASCADE).
+
+### Development
+
+The application uses:
+
+- [Drizzle ORM](https://orm.drizzle.team/) for database operations
+- [PostgreSQL](https://www.postgresql.org/) as the database
+- Local storage for client-side session persistence
+- WebSocket for real-time updates
+
+For local development:
+
+1. Start PostgreSQL
+2. Set up environment variables
+3. Run migrations
+4. Start the development server:
+
+```bash
+npm run dev
+```
+
+### Testing
+
+The project uses Jest for testing, with separate configurations for client and server tests:
+
+```bash
+# Run all tests
+npm test
+
+# Run client tests only
+npm run test:client
+
+# Run server tests only
+npm run test:server
+
+# Run server tests in watch mode
+npm run test:server:watch
+
+# Run tests with coverage report
+npm run test:coverage
+```
+
+#### Database Tests
+
+Server tests that interact with the database require a PostgreSQL connection. To set up the test database:
+
+1. Run the setup script:
+
+```bash
+npm run setup:test-db
+```
+
+This will:
+
+- Create a test database (`chatsheetai_test`)
+- Add `TEST_DATABASE_URL` to your `server/.env` file if not already present
+- Configure the test database URL based on your existing `DATABASE_URL`
+
+You can also manually configure the test database by adding to your `server/.env`:
+
+```env
+TEST_DATABASE_URL=postgresql://username:password@localhost:5432/chatsheetai_test
+```
+
+Note: All database-related environment variables should be in the server's environment file.
+
+The test suite will:
+
+- Automatically run migrations before tests
+- Use a clean database state for each test
+- Clean up test data after completion
+
+Note: The test database is separate from your development database to prevent test data from interfering with development data.
+
+To clean up the test database:
+
+```bash
+npm run cleanup:test-db
+```
+
+This will:
+
+- Drop the test database if it exists
+- Remove TEST_DATABASE_URL from your server/.env file

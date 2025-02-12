@@ -3,6 +3,8 @@ import smartsheet from "smartsheet";
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import { type ColumnMetadata, type SheetData } from "../../shared/schema";
 import { jobQueue } from "../jobs/queue.js";
+import { sheetCache } from "../services/cache.js";
+import { smartsheetCircuitBreaker } from "../utils/retry.js";
 
 // Tool schemas
 export const openSheetSchema = z.object({
@@ -22,6 +24,7 @@ export const getSheetInfoSchema = z.object({
 
 export const getSheetDataSchema = z.object({
   sheetId: z.string().describe("The Smartsheet ID to fetch data from"),
+  modifiedSince: z.string().optional().describe("Only fetch rows modified since this timestamp"),
 });
 
 export const processBulkOperationSchema = z.object({
@@ -33,6 +36,26 @@ export const processBulkOperationSchema = z.object({
     parameters: z.record(z.any()).optional()
   })
 });
+
+// Error handling utility
+function serializeSmartsheetError(err: any): string {
+  if (err.errorCode) {
+    return `Smartsheet Error ${err.errorCode}: ${err.message || 'Unknown error'}`;
+  }
+  if (err.statusCode === 404) {
+    return `Sheet not found. Please check the sheet ID and try again.`;
+  }
+  if (err.statusCode === 401) {
+    return `Authentication failed. Please check your Smartsheet access token.`;
+  }
+  if (err.statusCode === 403) {
+    return `Access denied. You don't have permission to access this sheet.`;
+  }
+  if (err.statusCode >= 500) {
+    return `Smartsheet service error (${err.statusCode}). Please try again later.`;
+  }
+  return err.message || 'An unexpected error occurred';
+}
 
 // Tool implementations
 export class SmartsheetTools {
@@ -88,7 +111,7 @@ export class SmartsheetTools {
     if (column.type === 'PICKLIST') {
       try {
         const response = await this.client.sheets.getColumn({
-          sheetId: this.currentSheetId!,
+          sheetId: Number(this.currentSheetId!),
           columnId: column.id
         });
         options = response.options?.map((opt: { value: string }) => opt.value) || [];
@@ -110,9 +133,19 @@ export class SmartsheetTools {
   }
 
   private async transformSheetData(sheet: any, maxRows?: number): Promise<SheetData> {
+    if (!sheet || !sheet.columns || !Array.isArray(sheet.columns)) {
+      console.error('Invalid sheet data in transformSheetData:', sheet);
+      throw new Error('Invalid sheet data structure');
+    }
+
     const columns = await Promise.all(
       sheet.columns.map((col: any) => this.getColumnMetadata(col))
     );
+
+    if (!sheet.rows || !Array.isArray(sheet.rows)) {
+      console.error('Invalid rows data in sheet:', sheet);
+      throw new Error('Invalid sheet rows structure');
+    }
 
     const rows = sheet.rows
       .slice(0, maxRows)
@@ -132,6 +165,23 @@ export class SmartsheetTools {
       rows,
       sheetName: sheet.name,
       totalRows: sheet.totalRowCount,
+      lastUpdated: new Date().toISOString(),
+      sheetId: sheet.id
+    };
+  }
+
+  private mergeModifiedRows(cachedData: SheetData, newData: SheetData): SheetData {
+    // Create a map of existing rows by ID for quick lookup
+    const rowMap = new Map(cachedData.rows.map(row => [row.id, row]));
+
+    // Update or add new rows
+    newData.rows.forEach(row => {
+      rowMap.set(row.id, row);
+    });
+
+    return {
+      ...cachedData,
+      rows: Array.from(rowMap.values()),
       lastUpdated: new Date().toISOString()
     };
   }
@@ -140,8 +190,40 @@ export class SmartsheetTools {
     try {
       this.ensureClient();
       console.log(`Fetching info for sheet ${params.sheetId}`);
-      const sheet = await this.client.sheets.getSheet({ id: params.sheetId });
-      const data = await this.transformSheetData(sheet, 3); // Only get first 3 rows
+
+      // Check cache first
+      const cachedData = sheetCache.get(params.sheetId);
+      if (cachedData) {
+        const sampleData = {
+          ...cachedData,
+          rows: cachedData.rows.slice(0, 3)
+        };
+        return {
+          success: true,
+          message: `Sheet "${sampleData.sheetName}" has ${sampleData.totalRows} rows and ${sampleData.columns.length} columns. Here are the first 3 rows as a sample.`,
+          data: {
+            sheetId: params.sheetId,
+            sheetName: sampleData.sheetName,
+            totalRows: sampleData.totalRows,
+            columns: sampleData.columns
+          }
+        };
+      }
+
+      const sheetId = Number(params.sheetId.trim());
+      console.log("Calling getSheet with trimmed sheetId:", sheetId, "of type", typeof sheetId);
+      const result = await smartsheetCircuitBreaker.execute(
+        async () => this.client.sheets.getSheet({ sheetId })
+      );
+
+      if (!result.success) {
+        throw result.error;
+      }
+
+      const data = await this.transformSheetData(result.result, 3); // Only get first 3 rows
+
+      // Cache the full sheet data
+      sheetCache.set(params.sheetId, data);
 
       return {
         success: true,
@@ -154,13 +236,8 @@ export class SmartsheetTools {
         }
       };
     } catch (err: any) {
-      console.error('Error fetching sheet info:', JSON.stringify(err, null, 2));
-      if (err.statusCode === 401) {
-        throw new Error("Authentication failed. Please ensure the Smartsheet access token is valid.");
-      } else if (err.statusCode === 404) {
-        throw new Error(`Sheet with ID ${params.sheetId} was not found.`);
-      }
-      throw new Error(`Failed to fetch sheet info: ${err.message}`);
+      console.error('Error fetching sheet info:', err);
+      throw new Error(serializeSmartsheetError(err));
     }
   }
 
@@ -168,22 +245,58 @@ export class SmartsheetTools {
     try {
       this.ensureClient();
       console.log(`Fetching data for sheet ${params.sheetId}`);
-      const sheet = await this.client.sheets.getSheet({ id: params.sheetId });
-      const data = await this.transformSheetData(sheet);
 
+      // Check cache first
+      const cachedData = sheetCache.get(params.sheetId);
+      if (cachedData && !params.modifiedSince) {
+        console.log(`Using cached data for sheet ${params.sheetId}`);
+        return {
+          success: true,
+          message: "Sheet data retrieved from cache",
+          data: cachedData
+        };
+      }
+
+      // Prepare API request options
+      const options: any = { sheetId: Number(params.sheetId) };
+      if (params.modifiedSince) {
+        options.rowsModifiedSince = new Date(params.modifiedSince).toISOString();
+      }
+
+      const result = await smartsheetCircuitBreaker.execute(
+        async () => this.client.sheets.getSheet({
+          id: Number(params.sheetId)
+        })
+      );
+
+      if (!result.success) {
+        throw result.error;
+      }
+
+      console.log('Raw sheet data:', JSON.stringify(result.result, null, 2));
+      const data = await this.transformSheetData(result.result);
+
+      // If we got modified rows, merge them with cached data
+      if (params.modifiedSince && cachedData) {
+        const updatedData = this.mergeModifiedRows(cachedData, data);
+        sheetCache.set(params.sheetId, updatedData);
+        return {
+          success: true,
+          message: "Sheet data updated with modifications",
+          data: updatedData
+        };
+      }
+
+      // Cache the full sheet data
+      sheetCache.set(params.sheetId, data);
       return {
         success: true,
-        message: "Sheet data fetched successfully",
+        message: "Sheet data fetched and cached successfully",
         data
       };
     } catch (err: any) {
-      console.error('Error fetching sheet data:', JSON.stringify(err, null, 2));
-      if (err.statusCode === 401) {
-        throw new Error("Authentication failed. Please ensure the Smartsheet access token is valid.");
-      } else if (err.statusCode === 404) {
-        throw new Error(`Sheet with ID ${params.sheetId} was not found.`);
-      }
-      throw new Error(`Failed to fetch sheet data: ${err.message}`);
+      console.error('Error fetching sheet data:', err);
+      throw new Error(serializeSmartsheetError(err));
     }
   }
 
@@ -191,6 +304,7 @@ export class SmartsheetTools {
     try {
       this.ensureClient();
       console.log(`Attempting to open sheet ${params.sheetId}`);
+      console.log("Converted Sheet ID:", Number(params.sheetId), "of type", typeof(Number(params.sheetId)));
       const result = await this.getSheetInfo({ sheetId: params.sheetId });
       this.currentSheetId = params.sheetId;
 
@@ -205,7 +319,7 @@ export class SmartsheetTools {
         }
       };
     } catch (err: any) {
-      console.error('Error opening sheet:', JSON.stringify(err, null, 2));
+      console.error('Error opening sheet:', err);
       throw err;
     }
   }
@@ -218,15 +332,26 @@ export class SmartsheetTools {
     try {
       this.ensureClient();
       console.log(`Adding column ${params.columnName} to sheet ${this.currentSheetId}`);
-      const response = await this.client.sheets.addColumn({
-        sheetId: this.currentSheetId,
-        body: {
-          title: params.columnName,
-          type: params.columnType,
-          index: 0,
-        },
-      });
+      const result = await smartsheetCircuitBreaker.execute(
+        async () => this.client.sheets.addColumn({
+          sheetId: Number(this.currentSheetId),
+          body: {
+            title: params.columnName,
+            type: params.columnType,
+            index: 0,
+          },
+        })
+      );
+
+      if (!result.success) {
+        throw result.error;
+      }
+
+      const response = result.result;
       console.log('Column added successfully:', response);
+
+      // Invalidate cache since sheet structure changed
+      sheetCache.invalidate(this.currentSheetId);
 
       return {
         success: true,
@@ -239,13 +364,8 @@ export class SmartsheetTools {
         }
       };
     } catch (err: any) {
-      console.error('Error adding column:', JSON.stringify(err, null, 2));
-      if (err.statusCode === 401) {
-        throw new Error("Authentication failed. Please ensure the Smartsheet access token is valid and has the necessary permissions.");
-      } else if (err.statusCode === 404) {
-        throw new Error("The current sheet was not found. Please try opening the sheet again.");
-      }
-      throw new Error(`Failed to add column: ${err.message}`);
+      console.error('Error adding column:', err);
+      throw new Error(serializeSmartsheetError(err));
     }
   }
 

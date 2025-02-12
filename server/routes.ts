@@ -1,387 +1,327 @@
-import { Router } from 'express';
-import OpenAI from 'openai';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import { SmartsheetTools, smartsheetTools } from './tools/smartsheet.js';
-import { jobsRouter } from './routes/jobs.js';
-import { 
-  getMessages, 
-  saveMessage, 
-  clearMessages, 
-  createSession,
-  getSessions,
-  getCurrentSession,
-  getSession,
-  type StorageState 
-} from './storage.js';
-import { type ColumnMetadata } from '../shared/schema.js';
+import { Router } from "express";
+import { z } from "zod";
+import { type Message, type MessageMetadata } from "../shared/schema";
+import { SmartsheetTools, smartsheetTools } from "./tools/smartsheet";
+import { storage } from "./storage";
+import { openaiCircuitBreaker } from "./utils/retry";
+import sessionsRouter from "./routes/sessions";
+import llm, { ChatCompletionResponse, CircuitBreakerResult } from "./services/llm";
+import { Result } from "./utils/types";
 
 const router = Router();
 
-// Mount jobs router
-router.use(jobsRouter);
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Mount session routes
+router.use("/api/sessions", sessionsRouter);
+const smartsheet = new SmartsheetTools();
 
-const smartsheet = new SmartsheetTools(process.env.SMARTSHEET_ACCESS_TOKEN || '');
-
-// Get chat history
-router.get('/api/messages', (req, res) => {
-  const { sessionId } = req.query;
-  if (!sessionId) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'sessionId is required' 
-    });
+// Error handling utility
+function serializeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
   }
-  
-  // Verify session exists
-  const session = getSession(sessionId as string);
-  if (!session) {
-    return res.status(404).json({
-      success: false,
-      error: 'Session not found'
-    });
+  if (typeof error === 'string') {
+    return error;
   }
-  
-  const messages = getMessages(sessionId as string);
-  res.json(messages);
-});
-
-// Get sessions
-router.get('/api/sessions', (req, res) => {
-  const sessions = getSessions();
-  res.json(sessions);
-});
-
-// Create new session
-router.post('/api/sessions', async (req, res) => {
-  try {
-    const { sheetId } = req.body;
-    if (!sheetId) {
-      return res.status(400).json({ error: 'sheetId is required' });
-    }
-
-    // Get sheet info and data for the session
-    const [infoResult, dataResult] = await Promise.all([
-      smartsheet.getSheetInfo({ sheetId }),
-      smartsheet.getSheetData({ sheetId })
-    ]);
-
-    const sessionId = createSession(sheetId, infoResult.data.sheetName);
-    
-    // Create system message with sheet metadata and sample data
-    const timestamp = new Date().toISOString();
-    saveMessage({
-      role: 'system',
-      content: `Sheet Information:
-Name: ${infoResult.data.sheetName}
-Total Rows: ${infoResult.data.totalRows}
-
-Columns:
-${infoResult.data.columns.map((col: ColumnMetadata) => `
-- ${col.title}
-  Type: ${col.type}
-  ${col.options ? `Options: ${col.options.join(', ')}` : ''}
-  ${col.systemColumn ? '(System Column)' : col.isEditable ? '(Editable)' : '(Read-only)'}
-`).join('\n')}
-
-Sample Data (3 rows):
-${JSON.stringify(dataResult.data.rows.slice(0, 3), null, 2)}`,
-      timestamp,
-      metadata: {
-        sessionId,
-        sheetId,
-        timestamp,
-        operation: 'initialize',
-        status: 'success'
-      }
-    });
-
-    res.json({ sessionId });
-  } catch (error) {
-    console.error('Error creating session:', error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : 'Failed to create session' 
-    });
+  if (typeof error === 'object' && error !== null) {
+    return JSON.stringify(error);
   }
-});
+  return 'An unknown error occurred';
+}
 
-// Send a message and get AI response
-router.post('/api/messages', async (req, res) => {
-  try {
-    const { content, role, metadata } = req.body;
-    
-    // Validate session if metadata contains sessionId
-    if (metadata?.sessionId) {
-      const session = getSession(metadata.sessionId);
-      if (!session) {
-        return res.status(404).json({
-          success: false,
-          error: 'Session not found'
-        });
-      }
-    }
-    
-    // Save user message
-    const userMessage = {
-      role,
-      content,
-      metadata,
-      timestamp: new Date().toISOString()
-    };
-    saveMessage(userMessage);
-
-    // Get chat history for context (limit to last 10 messages)
-    const chatHistory: ChatCompletionMessageParam[] = getMessages(metadata?.sessionId)
-      .slice(-10) // Only keep last 10 messages
-      .flatMap((msg): ChatCompletionMessageParam[] => {
-      switch (msg.role) {
-        case 'function':
-          if (!msg.name) return []; // Skip if no name
-          const functionMsg: ChatCompletionMessageParam = {
-            role: 'function' as const,
-            name: msg.name,
-            content: msg.content
-          };
-          // Add tool_call_id if it exists in the original message
-          if ('function_call' in msg && msg.function_call?.id) {
-            (functionMsg as any).tool_call_id = msg.function_call.id;
-          }
-          return [functionMsg];
-        case 'assistant':
-          return [{
-            role: 'assistant' as const,
-            content: msg.content
-          }];
-        case 'user':
-          return [{
-            role: 'user' as const,
-            content: msg.content
-          }];
-        case 'system':
-          return [{
-            role: 'system' as const,
-            content: msg.content
-          }];
-        default:
-          return []; // Skip unknown roles
-      }
-    });
-
-    // Get AI response
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: chatHistory,
-      tools: smartsheetTools,
-      tool_choice: "auto"
-    });
-
-    const assistantResponse = completion.choices[0].message;
-
-    // Handle function calls
-    if (assistantResponse.tool_calls) {
-      // Execute and collect all function responses
-      const functionResponses = new Map<string, any>();
-      
-      for (const toolCall of assistantResponse.tool_calls) {
-        const functionName = toolCall.function.name;
-        const functionArgs = JSON.parse(toolCall.function.arguments);
-
-        let functionResponse;
-        switch (functionName) {
-          case 'openSheet':
-            functionResponse = await smartsheet.openSheet(functionArgs);
-            break;
-          case 'addColumn':
-            functionResponse = await smartsheet.addColumn(functionArgs);
-            break;
-          case 'getSheetData':
-            functionResponse = await smartsheet.getSheetData(functionArgs);
-            break;
-          case 'getSheetInfo':
-            functionResponse = await smartsheet.getSheetInfo(functionArgs);
-            break;
-          default:
-            throw new Error(`Unknown function: ${functionName}`);
-        }
-
-        functionResponses.set(toolCall.id, functionResponse);
-
-        const timestamp = new Date().toISOString();
-        // Save function response with metadata
-        saveMessage({
-          role: 'function',
-          name: functionName,
-          content: JSON.stringify(functionResponse),
-          timestamp,
-          function_call: { id: toolCall.id },
-          metadata: {
-            sessionId: metadata?.sessionId,
-            sheetId: functionArgs.sheetId,
-            operation: functionName,
-            status: functionResponse.success ? 'success' : 'error',
-            timestamp
-          }
-        });
-      }
-
-      // Construct final messages with reduced context for sheet info investigation.
-      let finalMessages: ChatCompletionMessageParam[];
-      const infoCalls = (assistantResponse.tool_calls ?? []).filter(tc => tc.function.name === "getSheetInfo");
-      if (infoCalls.length > 0) {
-        finalMessages = [
-          ...chatHistory,
-          {
-            role: 'assistant',
-            content: assistantResponse.content || '',
-            tool_calls: assistantResponse.tool_calls ?? []
-          } satisfies ChatCompletionMessageParam,
-          ...infoCalls.map(toolCall => ({
-            role: 'function' as const,
-            name: toolCall.function.name,
-            content: JSON.stringify(functionResponses.get(toolCall.id)),
-            tool_call_id: toolCall.id
-          }))
-        ];
-      } else {
-        finalMessages = [
-          ...chatHistory,
-          {
-            role: 'assistant',
-            content: assistantResponse.content || '',
-            tool_calls: assistantResponse.tool_calls ?? []
-          } satisfies ChatCompletionMessageParam,
-          ...(assistantResponse.tool_calls ?? []).map(toolCall => ({
-            role: 'function' as const,
-            name: toolCall.function.name,
-            content: JSON.stringify(functionResponses.get(toolCall.id)),
-            tool_call_id: toolCall.id
-          }))
-        ];
-      }
-      
-      const secondResponse = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: finalMessages
-      });
-
-      const finalResponse = secondResponse.choices[0].message;
-      
-      // Prefer the getSheetInfo response over others for metadata
-      const infoResponseEntry = Array.from(functionResponses.entries()).find(([id, response]) => {
-        const toolCall = assistantResponse.tool_calls?.find(tc => tc.id === id);
-        return toolCall && toolCall.function.name === "getSheetInfo";
-      });
-      const responseMetadata = infoResponseEntry ? 
-        ('metadata' in infoResponseEntry[1] ? infoResponseEntry[1].metadata : infoResponseEntry[1].data) : 
-        null;
-      
-      saveMessage({
-        role: 'assistant',
-        content: finalResponse.content || '',
-        timestamp: new Date().toISOString(),
-        metadata: {
-          ...responseMetadata,
-          sessionId: metadata?.sessionId
-        }
-      });
-    } else {
-      const timestamp = new Date().toISOString();
-      // Save direct assistant response if no function calls
-      saveMessage({
-        role: 'assistant',
-        content: assistantResponse.content || '',
-        timestamp,
-        metadata: {
-          sessionId: metadata?.sessionId,
-          timestamp,
-          status: 'success'
-        }
-      });
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error processing message:', error);
-    if (error instanceof Error) {
-      res.status(500).json({ 
-        error: 'Failed to process message',
-        details: error.message 
-      });
-    } else {
-      res.status(500).json({ 
-        error: 'Failed to process message',
-        details: 'An unknown error occurred' 
-      });
-    }
-  }
-});
-
-// Clear chat history
-router.delete('/api/messages', (req, res) => {
-  const { sessionId } = req.query;
-  clearMessages(sessionId as string | undefined);
-  res.json({ success: true });
-});
-
-// Direct Smartsheet data endpoints
-router.get('/api/smartsheet/:sheetId', async (req, res) => {
+// Get sheet data
+router.get("/api/smartsheet/:sheetId", async (req, res) => {
   try {
     const { sheetId } = req.params;
     if (!sheetId) {
       return res.status(400).json({ 
         success: false, 
-        error: 'sheetId is required' 
+        error: "sheetId is required" 
       });
     }
 
     const result = await smartsheet.getSheetData({ sheetId });
-    res.json({
-      success: true,
-      data: {
-        ...result.data,
-        lastUpdated: new Date().toISOString()
-      }
-    });
+    res.json({ success: true, data: result.data });
   } catch (error) {
-    console.error('Error fetching sheet data:', error);
+    console.error("Error fetching sheet data:", error);
     res.status(500).json({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
+      error: serializeError(error)
     });
   }
 });
 
-// Get sheet metadata only (for LLM)
-router.get('/api/smartsheet/:sheetId/meta', async (req, res) => {
+// Get messages for a session
+router.get("/api/messages", async (req, res) => {
   try {
-    const { sheetId } = req.params;
-    if (!sheetId) {
+    const { sessionId } = req.query;
+    if (!sessionId || typeof sessionId !== "string") {
       return res.status(400).json({ 
         success: false, 
-        error: 'sheetId is required' 
+        error: "sessionId is required" 
       });
     }
 
-    const result = await smartsheet.getSheetInfo({ sheetId });
-    res.json({
-      success: true,
-      data: {
-        sheetId,
-        sheetName: result.data.sheetName,
-        totalRows: result.data.totalRows,
-        columns: result.data.columns
-      }
-    });
+    const messages = await storage.getMessages(sessionId);
+    res.json(messages);
   } catch (error) {
-    console.error('Error fetching sheet metadata:', error);
+    console.error("Error getting messages:", error);
     res.status(500).json({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
+      error: serializeError(error)
     });
   }
 });
 
-export { router };
+// Delete messages for a session
+router.delete("/api/messages", async (req, res) => {
+  try {
+    const { sessionId } = req.query;
+    if (!sessionId || typeof sessionId !== "string") {
+      return res.status(400).json({ 
+        success: false, 
+        error: "sessionId is required" 
+      });
+    }
+
+    await storage.clearMessages(sessionId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting messages:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: serializeError(error)
+    });
+  }
+});
+
+// Send a message and get a response
+router.post("/api/messages", async (req, res) => {
+  try {
+    const { content, metadata } = req.body;
+    if (!content) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "content is required" 
+      });
+    }
+
+    // Get session messages for context
+    const messages = metadata?.sessionId ? 
+      await storage.getMessages(metadata.sessionId) : 
+      [];
+
+    // Add system message if this is a new conversation
+    if (messages.length === 0) {
+      const systemMessage: Message = {
+        role: "system",
+        content: "You are a helpful assistant that can interact with Smartsheet data. You can view and modify sheets, and perform operations like summarization and analysis.",
+        metadata: {
+          sessionId: metadata?.sessionId,
+          timestamp: new Date().toISOString(),
+          operation: null,
+          status: null
+        }
+      };
+      messages.push(systemMessage);
+      if (metadata?.sessionId) {
+        await storage.addMessage(metadata.sessionId, systemMessage);
+      }
+    }
+
+    // Add user message
+    const userMessage: Message = {
+      role: "user",
+      content,
+      metadata: {
+        ...metadata,
+        status: "success",
+        timestamp: new Date().toISOString()
+      }
+    };
+    messages.push(userMessage);
+    if (metadata?.sessionId) {
+      await storage.addMessage(metadata.sessionId, userMessage);
+    }
+
+    // Get completion from OpenAI
+    const result = await openaiCircuitBreaker.execute(
+      async () => llm.getChatCompletion({
+        messages: messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          name: msg.name
+        })),
+        tools: smartsheetTools
+      }),
+      {
+        maxAttempts: 3,
+        retryableErrors: [
+          /rate limit/i,
+          /timeout/i,
+          /busy/i,
+          /5\d\d/,
+          "The server is currently processing too many requests"
+        ]
+      }
+    );
+
+    if (!result.success || !result.result) {
+      throw new Error(result.error?.message || "Failed to get completion from OpenAI");
+    }
+
+    const completion = result.result;
+    if (!completion.success || !completion.result || !completion.result.choices || !completion.result.choices[0]) {
+      throw new Error("No completion generated");
+    }
+
+    const choice = completion.result.choices[0];
+
+    // Handle tool calls
+    if (choice.message.tool_calls) {
+      const toolCall = choice.message.tool_calls[0];
+      
+      // Add assistant's tool call message
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: choice.message.content || "",
+        name: toolCall.function.name,
+        metadata: {
+          sessionId: metadata?.sessionId,
+          timestamp: new Date().toISOString(),
+          operation: toolCall.function.name,
+          status: "pending"
+        }
+      };
+      messages.push(assistantMessage);
+      if (metadata?.sessionId) {
+        await storage.addMessage(metadata.sessionId, assistantMessage);
+      }
+
+      // Execute tool call
+      try {
+        const args = JSON.parse(toolCall.function.arguments);
+        const toolResult = await (smartsheet as any)[toolCall.function.name](args);
+
+        // Add function result message
+        const functionMessage: Message = {
+          role: "function",
+          name: toolCall.function.name,
+          content: JSON.stringify(toolResult),
+          metadata: {
+            sessionId: metadata?.sessionId,
+            timestamp: new Date().toISOString(),
+            operation: toolCall.function.name,
+            status: "success"
+          }
+        };
+        messages.push(functionMessage);
+        if (metadata?.sessionId) {
+          await storage.addMessage(metadata.sessionId, functionMessage);
+        }
+
+        // Get final response from OpenAI
+        const finalResult = await openaiCircuitBreaker.execute(
+          async () => llm.getChatCompletion({
+            messages: messages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              name: msg.name
+            }))
+          }),
+          {
+            maxAttempts: 3,
+            retryableErrors: [
+              /rate limit/i,
+              /timeout/i,
+              /busy/i,
+              /5\d\d/,
+              "The server is currently processing too many requests"
+            ]
+          }
+        );
+
+        if (!finalResult.success || !finalResult.result) {
+          throw new Error(finalResult.error?.message || "Failed to get final completion from OpenAI");
+        }
+
+        const finalCompletion = finalResult.result;
+        if (!finalCompletion.success || !finalCompletion.result || !finalCompletion.result.choices || !finalCompletion.result.choices[0]) {
+          throw new Error("No final completion generated");
+        }
+
+        const finalChoice = finalCompletion.result.choices[0];
+
+        // Add final assistant message
+        const finalMessage: Message = {
+          role: "assistant",
+          content: finalChoice.message.content || "",
+          metadata: {
+            sessionId: metadata?.sessionId,
+            timestamp: new Date().toISOString(),
+            operation: toolCall.function.name,
+            status: "success"
+          }
+        };
+        messages.push(finalMessage);
+        if (metadata?.sessionId) {
+          await storage.addMessage(metadata.sessionId, finalMessage);
+        }
+
+        res.json(finalMessage);
+      } catch (error) {
+        console.error("Error executing tool:", error);
+        const errorMessage: Message = {
+          role: "assistant",
+          content: serializeError(error),
+          metadata: {
+            sessionId: metadata?.sessionId,
+            timestamp: new Date().toISOString(),
+            operation: toolCall.function.name,
+            status: "error",
+            error: serializeError(error)
+          }
+        };
+        messages.push(errorMessage);
+        if (metadata?.sessionId) {
+          await storage.addMessage(metadata.sessionId, errorMessage);
+        }
+        res.json(errorMessage);
+      }
+    } else {
+      // No tool call, just a regular response
+      const message: Message = {
+        role: "assistant",
+        content: choice.message.content || "",
+        metadata: {
+          sessionId: metadata?.sessionId,
+          timestamp: new Date().toISOString(),
+          operation: null,
+          status: "success"
+        }
+      };
+      messages.push(message);
+      if (metadata?.sessionId) {
+        await storage.addMessage(metadata.sessionId, message);
+      }
+      res.json(message);
+    }
+  } catch (error) {
+    console.error("Error processing message:", error);
+    const errorMessage: Message = {
+      role: "assistant",
+      content: "I encountered an error while processing your request.",
+      metadata: {
+        timestamp: new Date().toISOString(),
+        operation: null,
+        status: "error",
+        error: serializeError(error)
+      }
+    };
+    if (error instanceof Error) {
+      console.error(error.stack);
+    }
+    res.status(500).json(errorMessage);
+  }
+});
+
 export default router;
