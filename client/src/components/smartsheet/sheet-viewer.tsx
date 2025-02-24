@@ -9,10 +9,11 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, AlignJustify, GripVertical, WrapText } from "lucide-react";
+import { ArrowUpDown, Search, AlignLeft, AlignCenter, AlignRight, ArrowDown, ArrowUp, AlignJustify, GripVertical, WrapText, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { EditableCell } from "./editable-cell";
 import { type SheetData } from "@shared/schema";
+import { type SheetError } from "@/lib/types";
 
 type CellAlignment = {
   vertical: 'top' | 'middle' | 'bottom';
@@ -81,10 +82,86 @@ function ResizableHeader({ children, onResize, width }: ResizableHeaderProps) {
 }
 
 interface SheetViewerProps {
-  data: SheetData;
+  data?: SheetData;
+  isLoading?: boolean;
+  error?: SheetError | null;
+  onRetry?: () => void;
 }
 
-export default function SheetViewer({ data }: SheetViewerProps) {
+function LoadingState() {
+  return (
+    <Card className="flex flex-col h-full">
+      <div className="p-4 border-b">
+        <div className="h-6 w-48 bg-muted/50 animate-pulse rounded" />
+      </div>
+      <div className="flex-1 p-4">
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center space-y-4">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+            <p className="text-muted-foreground">Loading sheet data...</p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ErrorState({ error, onRetry }: { error: SheetError; onRetry?: () => void }) {
+  return (
+    <Card className="flex flex-col h-full">
+      <div className="p-4 border-b">
+        <div className="h-6 w-48 bg-muted/50 animate-pulse rounded" />
+      </div>
+      <div className="flex-1 p-4">
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center space-y-4 max-w-md mx-auto p-4">
+            <div className="text-destructive">
+              <AlertCircle className="h-8 w-8 mx-auto" />
+              <p className="mt-2 font-semibold">Error Loading Sheet</p>
+            </div>
+            <p className="text-muted-foreground">
+              {error.code ? `[${error.code}] ` : ''}{error.message}
+              {error.statusCode ? ` (${error.statusCode})` : ''}
+              {error.details ? (
+                <span className="block mt-1 text-sm opacity-80">
+                  {typeof error.details === 'string' ? error.details : JSON.stringify(error.details)}
+                </span>
+              ) : null}
+            </p>
+            {onRetry && (
+              <Button 
+                variant="outline" 
+                onClick={onRetry}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Card className="flex flex-col h-full">
+      <div className="p-4 border-b">
+        <div className="h-6 w-48 bg-muted/50 animate-pulse rounded" />
+      </div>
+      <div className="flex-1 p-4">
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center space-y-4">
+            <p className="text-muted-foreground">No sheet data available</p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export default function SheetViewer({ data, isLoading, error, onRetry }: SheetViewerProps): JSX.Element {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{
     column: string | null;
@@ -97,9 +174,21 @@ export default function SheetViewer({ data }: SheetViewerProps) {
   });
   const [cellAlignments, setCellAlignments] = useState<Record<string, CellAlignment>>({});
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() =>
-    Object.fromEntries(data.columns.map(col => [col.id, 200]))
+    data ? Object.fromEntries(data.columns.map(col => [col.id, 200])) : {}
   );
   const [wrapText, setWrapText] = useState(true);
+
+  if (isLoading) {
+    return <LoadingState />;
+  }
+
+  if (error) {
+    return <ErrorState error={error} onRetry={onRetry} />;
+  }
+
+  if (!data) {
+    return <EmptyState />;
+  }
 
   // Filter function
   const filteredRows = useMemo(() => {

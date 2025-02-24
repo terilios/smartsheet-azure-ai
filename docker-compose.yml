@@ -19,14 +19,30 @@ services:
       # Add an initialization directory for SQL scripts if needed.
       - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
 
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # Optionally, other services such as the backend server
   server:
     build: .
     command: npm run dev:server
     environment:
       DATABASE_URL: postgres://user:pass@db:5432/chatsheetai
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "3000:3000"
@@ -46,3 +62,4 @@ services:
 
 volumes:
   db-data:
+  redis-data:

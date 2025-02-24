@@ -14,9 +14,10 @@ const messageSchema = z.discriminatedUnion("type", [
 ]);
 
 export class WebSocketService {
+  private static instance: WebSocketService | null = null;
   private wss: WebSocketServer;
 
-  constructor(server: Server) {
+  private constructor(server: Server) {
     this.wss = new WebSocketServer({ server });
     this.setupWebSocketServer();
   }
@@ -98,10 +99,42 @@ export class WebSocketService {
   /**
    * Close all connections and shut down the server
    */
+  /**
+   * Get the WebSocketService instance
+   */
+  static getInstance(): WebSocketService {
+    if (!WebSocketService.instance) {
+      throw new Error("WebSocketService not initialized. Call initialize() first.");
+    }
+    return WebSocketService.instance;
+  }
+
+  /**
+   * Initialize the WebSocketService
+   */
+  static initialize(server: Server): WebSocketService {
+    if (!WebSocketService.instance) {
+      WebSocketService.instance = new WebSocketService(server);
+    }
+    return WebSocketService.instance;
+  }
+
+  /**
+   * Broadcast a message to all connected clients
+   */
+  broadcast(message: string): void {
+    this.wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
   close(): Promise<void> {
     return new Promise((resolve) => {
       this.wss.close(() => {
         console.log("WebSocket server closed");
+        WebSocketService.instance = null;
         resolve();
       });
     });

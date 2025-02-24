@@ -6,8 +6,9 @@ import express from 'express';
 import cors from 'cors';
 import http from 'http';
 import router from './routes.js';
-import { jobsRouter } from './routes/jobs.js';
+import jobsRouter from './routes/jobs.js';
 import webhookRouter from './routes/webhooks.js';
+import sessionsRouter from './routes/sessions.js';
 import { jobQueue } from './jobs/queue.js';
 import { WebSocketService } from './services/websocket.js';
 import bodyParser from 'body-parser';
@@ -47,7 +48,7 @@ const app = express();
 const server = http.createServer(app);
 
 // Initialize WebSocket service
-const wsService = new WebSocketService(server);
+const wsService = WebSocketService.initialize(server);
 
 // Enable CORS for development
 app.use(cors({
@@ -76,10 +77,16 @@ app.use((req, res, next) => {
 // Regular JSON parsing for other routes
 app.use(express.json());
 
-// Mount routers
-app.use(router);
-app.use(jobsRouter);
+// Mount routers with /api prefix
+app.use('/api', router);
+app.use('/api/jobs', jobsRouter);
+app.use('/api/sessions', sessionsRouter);
 app.use('/webhooks', webhookRouter);
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: "ok" });
+});
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

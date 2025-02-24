@@ -94,6 +94,23 @@ The application uses:
 - Local storage for client-side session persistence
 - WebSocket for real-time updates
 
+### Sheet Initialization Flow
+
+The application follows a specific initialization sequence for Smartsheet interaction:
+
+1. When first loaded, the application shows a full-screen modal requesting a Smartsheet ID
+2. Upon entering a valid sheet ID:
+   - A new session is created
+   - The sheet data is loaded and cached
+   - The chat interface becomes available
+3. The LLM system message is initialized in two stages:
+   - Basic capabilities are described first
+   - Sheet-specific information (columns, structure) is added once available
+4. Real-time updates are established through WebSocket connections
+5. The sheet viewer refreshes automatically when changes occur
+
+This sequence ensures proper context initialization and maintains data consistency throughout the chat session.
+
 For local development:
 
 1. Start PostgreSQL

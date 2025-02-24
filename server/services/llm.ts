@@ -1,4 +1,8 @@
 import fetch from 'node-fetch';
+import type { ChatCompletionTool } from "openai/resources/chat/completions";
+
+// Re-export ChatCompletionTool for use in other files
+export type { ChatCompletionTool };
 
 export interface ChatMessage {
   role: string;
@@ -8,7 +12,7 @@ export interface ChatMessage {
 
 export interface ChatCompletionOptions {
   messages: ChatMessage[];
-  tools?: any[];
+  tools?: ChatCompletionTool[];
 }
 
 export interface ChatCompletionResponse {
@@ -70,18 +74,24 @@ export async function getChatCompletion(options: ChatCompletionOptions): Promise
   const url = `${config.apiBase}/openai/deployments/${config.deployment}/chat/completions?api-version=${config.apiVersion}`;
 
   try {
+    // Construct the payload once to ensure consistency
+    const payload = {
+      messages,
+      max_tokens: 800,
+      temperature: 0.7,
+      model: config.deployment,
+      functions: tools?.map(tool => tool.function) || [] // Extract just the function definitions
+    };
+    
+    console.log("LLM Payload: ", JSON.stringify(payload, null, 2));
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'api-key': config.apiKey
       },
-      body: JSON.stringify({
-        messages,
-        max_tokens: 800,
-        temperature: 0.7,
-        model: config.deployment
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
