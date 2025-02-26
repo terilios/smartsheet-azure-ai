@@ -6,6 +6,7 @@ import { SmartsheetProvider } from "./lib/smartsheet-context";
 import { FullscreenSheetIdModal } from "./components/smartsheet/fullscreen-sheet-id-modal";
 import "./index.css";
 import "./styles/sheet.css";
+import "./styles/chat.css";
 import Home from "./pages/home";
 import NotFound from "./pages/not-found";
 import { ErrorBoundary } from "./components/ui/error-boundary";

@@ -25,7 +25,7 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
   };
 
   return (
-    <div className="space-y-4 mb-4">
+    <div className="space-y-4 mb-4 message-list">
       {sortedMessages.map((message, i) => {
         const isError = message.metadata?.status === "error";
         const isPending = message.metadata?.status === "pending";
@@ -67,11 +67,15 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
                   )}
                 </div>
               )}
-              {isError && message.metadata?.error && (
+              {isError && message.metadata?.error !== undefined && (
                 <Alert variant="destructive" className="mt-2">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    {getErrorMessage(message.metadata.error) as string}
+                    {typeof message.metadata.error === 'string'
+                      ? message.metadata.error
+                      : message.metadata.error instanceof Error
+                        ? message.metadata.error.message
+                        : 'An error occurred while processing your request'}
                   </AlertDescription>
                 </Alert>
               )}

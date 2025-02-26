@@ -37,7 +37,7 @@ export default function Home() {
   return (
     <div className="h-screen w-full">
       <ErrorBoundary onError={() => setHasSplitError(true)}>
-        <Split initialPrimarySize="400px" minPrimarySize="250px" minSecondarySize="30%">
+        <Split initialPrimarySize="400px" minPrimarySize="250px" minSecondarySize="30%" splitterSize="4px">
           <div className="h-full overflow-auto bg-background p-4">
             <ChatInterface />
           </div>

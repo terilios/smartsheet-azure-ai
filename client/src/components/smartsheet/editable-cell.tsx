@@ -29,15 +29,20 @@ export function EditableCell({
   const [editValue, setEditValue] = useState<any>(value);
   const [isSaving, setIsSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   useEffect(() => {
     // Focus input when entering edit mode
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
+    if (isEditing) {
+      if (columnType === "DATE" && inputRef.current) {
+        inputRef.current.focus();
+      } else if (columnType !== "CHECKBOX" && columnType !== "PICKLIST" && textareaRef.current) {
+        textareaRef.current.focus();
+      }
     }
-  }, [isEditing]);
+  }, [isEditing, columnType]);
 
   // Update local state when prop value changes
   useEffect(() => {
@@ -73,6 +78,22 @@ export function EditableCell({
   const saveChanges = async () => {
     setIsSaving(true);
     try {
+      // Get the current session ID from localStorage
+      let sessionId = null;
+      try {
+        const storedSession = localStorage.getItem('smartsheet_session');
+        if (storedSession) {
+          const session = JSON.parse(storedSession);
+          sessionId = session.sessionId;
+        }
+      } catch (e) {
+        console.error('Error reading session from localStorage:', e);
+      }
+
+      if (!sessionId) {
+        throw new Error("Missing or invalid session ID");
+      }
+
       const response = await fetch(`/api/smartsheet/${sheetId}/rows/${rowId}`, {
         method: "PATCH",
         headers: {
@@ -80,7 +101,8 @@ export function EditableCell({
         },
         body: JSON.stringify({
           columnId,
-          value: editValue
+          value: editValue,
+          sessionId // Include the session ID in the request
         }),
       });
 
@@ -149,6 +171,7 @@ export function EditableCell({
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={handleBlur}
               className="w-full p-2 border rounded"
+              aria-label={`Select option for ${columnId}`}
             >
               <option value="">Select...</option>
               {options?.map((option) => (
@@ -161,14 +184,21 @@ export function EditableCell({
 
         default:
           return (
-            <Input
-              ref={inputRef}
-              type="text"
+            <textarea
+              ref={textareaRef}
               value={editValue || ""}
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={handleBlur}
-              onKeyDown={handleKeyDown}
-              className="w-full"
+              onKeyDown={(e) => {
+                // Allow Enter key for new lines when Shift is pressed
+                if (e.key === "Enter" && !e.shiftKey) {
+                  handleKeyDown(e);
+                }
+              }}
+              className="w-full p-2 border rounded resize-none"
+              rows={4}
+              aria-label={`Edit cell value`}
+              placeholder="Enter value"
             />
           );
       }
@@ -188,7 +218,12 @@ export function EditableCell({
         return value ? format(new Date(value), "MMM d, yyyy") : "";
 
       default:
-        return value || "";
+        // Preserve formatting like new lines by using white-space: pre-wrap
+        return (
+          <div className="whitespace-pre-wrap">
+            {value || ""}
+          </div>
+        );
     }
   };
 

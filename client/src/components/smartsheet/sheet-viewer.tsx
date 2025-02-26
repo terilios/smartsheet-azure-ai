@@ -176,7 +176,7 @@ export default function SheetViewer({ data, isLoading, error, onRetry }: SheetVi
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() =>
     data ? Object.fromEntries(data.columns.map(col => [col.id, 200])) : {}
   );
-  const [wrapText, setWrapText] = useState(true);
+  const [wrapText, setWrapText] = useState(true); // Default to true for text wrapping
 
   console.log('SheetViewer render:', {
     isLoading,
@@ -336,7 +336,7 @@ export default function SheetViewer({ data, isLoading, error, onRetry }: SheetVi
 
   const getCellAlignment = (rowIndex: number, columnId: string): CellAlignment => {
     const key = `${rowIndex}-${columnId}`;
-    return cellAlignments[key] || { vertical: 'middle', horizontal: 'left' };
+    return cellAlignments[key] || { vertical: 'top', horizontal: 'left' };
   };
 
   const handleColumnResize = (columnId: string, width: number) => {
@@ -497,7 +497,7 @@ export default function SheetViewer({ data, isLoading, error, onRetry }: SheetVi
                               width: columnWidths[column.id],
                               textAlign: alignment.horizontal,
                               verticalAlign: alignment.vertical,
-                              whiteSpace: wrapText ? 'normal' : 'nowrap',
+                              whiteSpace: wrapText ? 'pre-wrap' : 'nowrap',
                             }}
                             onClick={(e) => handleCellClick(rowIndex, column.id, e)}
                           >

@@ -174,4 +174,64 @@ router.get("/:sheetId", async (req, res) => {
   }
 });
 
+// Update a cell in a row
+router.patch("/:sheetId/rows/:rowId", async (req, res) => {
+  try {
+    const { sheetId, rowId } = req.params;
+    const { columnId, value, sessionId } = req.body;
+    
+    if (!sheetId || !rowId || !columnId) {
+      return res.status(400).json({
+        success: false,
+        error: "Sheet ID, Row ID, and Column ID are required"
+      });
+    }
+
+    // Verify session ID if provided
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing or invalid session ID"
+      });
+    }
+
+    // Use the environment variable for access token
+    smartsheetTools.setAccessToken(process.env.SMARTSHEET_ACCESS_TOKEN || "");
+    
+    // Update the cell
+    const result = await smartsheetTools.updateCell(sheetId, rowId, columnId, value);
+    
+    res.json({
+      success: true,
+      message: "Cell updated successfully",
+      data: result
+    });
+  } catch (error: any) {
+    console.error("Error updating cell:", error);
+    
+    // Provide more specific error messages based on the error type
+    if (error.statusCode === 401) {
+      res.status(401).json({
+        success: false,
+        error: "Authentication failed. Please check your Smartsheet access token."
+      });
+    } else if (error.statusCode === 403) {
+      res.status(403).json({
+        success: false,
+        error: "You don't have permission to update this sheet."
+      });
+    } else if (error.statusCode === 404) {
+      res.status(404).json({
+        success: false,
+        error: "Sheet or row not found. Please check the IDs."
+      });
+    } else {
+      res.status(error.statusCode || 400).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update cell"
+      });
+    }
+  }
+});
+
 export default router;

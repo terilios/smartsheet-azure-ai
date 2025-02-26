@@ -1,0 +1,58 @@
+/* Styles for the chat interface */
+.chat-interface {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ensure message list scrolls properly */
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Ensure input area stays at the bottom */
+.message-input {
+  margin-top: auto;
+}
+
+/* Splitter styles */
+.Resizer {
+  background: rgba(var(--muted-foreground), 0.2);
+  z-index: 1;
+  box-sizing: border-box;
+  background-clip: padding-box;
+}
+
+.Resizer.horizontal {
+  height: 4px;
+  margin: -2px 0;
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  cursor: row-resize;
+  width: 100%;
+}
+
+.Resizer.horizontal:hover {
+  background-color: rgba(var(--accent), 0.3);
+}
+
+.Resizer.vertical {
+  width: 4px;
+  margin: 0 -2px;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+  cursor: col-resize;
+}
+
+.Resizer.vertical:hover {
+  background-color: rgba(var(--accent), 0.3);
+}
+
+.Resizer.disabled {
+  cursor: not-allowed;
+}
+
+.Resizer.disabled:hover {
+  border-color: transparent;
+}

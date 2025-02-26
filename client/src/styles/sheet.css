@@ -43,3 +43,16 @@
   height: 100%;
   overflow: auto;
 }
+
+/* Preserve formatting in cells */
+.sheet-view table td .whitespace-pre-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.5em;
+}
+
+/* Default cell alignment */
+.sheet-view table td {
+  vertical-align: top;
+  text-align: left;
+}

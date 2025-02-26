@@ -21,7 +21,7 @@ export default function MessageInput({ onSend, disabled, placeholder }: MessageI
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
+    <form onSubmit={handleSubmit} className="flex gap-2 message-input">
       <Textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}

@@ -3,15 +3,58 @@ import { Server } from "http";
 import { z } from "zod";
 import { subscribeToSheet } from "../routes/webhooks.js";
 
-// Message schemas
+// Enhanced message schemas
 const subscribeMessageSchema = z.object({
   type: z.literal("subscribe"),
   sheetId: z.string()
 });
 
+const pingMessageSchema = z.object({
+  type: z.literal("ping")
+});
+
+const sheetUpdateMessageSchema = z.object({
+  type: z.literal("sheet_update"),
+  sheetId: z.string(),
+  operation: z.enum(["update", "insert", "delete"]),
+  target: z.enum(["sheet", "row", "column", "cell"]).optional(),
+  targetId: z.string().optional(),
+  rows: z.array(z.record(z.string(), z.any())).optional(),
+  columns: z.array(z.any()).optional(),
+  change: z.object({
+    type: z.enum(["sheet", "row", "column", "cell"]),
+    action: z.enum(["created", "updated", "deleted"]),
+    id: z.string(),
+    data: z.any().optional(),
+    timestamp: z.string()
+  }).optional()
+});
+
 const messageSchema = z.discriminatedUnion("type", [
-  subscribeMessageSchema
+  subscribeMessageSchema,
+  pingMessageSchema,
+  sheetUpdateMessageSchema
 ]);
+
+// Update types
+export type UpdateTarget = "sheet" | "row" | "column" | "cell";
+export type UpdateAction = "created" | "updated" | "deleted";
+
+export interface SheetUpdateEvent {
+  type: "sheet_update";
+  sheetId: string;
+  operation?: string;
+  target?: UpdateTarget;
+  targetId?: string;
+  timestamp: string;
+  change?: {
+    type: UpdateTarget;
+    action: UpdateAction;
+    id: string;
+    data?: any;
+    timestamp: string;
+  };
+}
 
 export class WebSocketService {
   private static instance: WebSocketService | null = null;
@@ -65,6 +108,12 @@ export class WebSocketService {
       case "subscribe":
         this.handleSubscribe(ws, message);
         break;
+      case "ping":
+        this.handlePing(ws);
+        break;
+      case "sheet_update":
+        this.handleSheetUpdate(ws, message);
+        break;
       default:
         ws.send(JSON.stringify({
           type: "error",
@@ -73,13 +122,31 @@ export class WebSocketService {
     }
   }
 
+  private handlePing(ws: WebSocket) {
+    try {
+      // Respond with pong to keep connection alive
+      ws.send(JSON.stringify({
+        type: "pong",
+        timestamp: new Date().toISOString()
+      }));
+    } catch (error) {
+      console.error("Error handling ping:", error);
+    }
+  }
+
   private handleSubscribe(ws: WebSocket, message: z.infer<typeof subscribeMessageSchema>) {
     try {
+      // Store the sheet ID in the WebSocket object for later reference
+      (ws as any).subscribedSheets = (ws as any).subscribedSheets || [];
+      (ws as any).subscribedSheets.push(message.sheetId);
+      
       subscribeToSheet(message.sheetId, ws);
       ws.send(JSON.stringify({
         type: "subscribed",
         sheetId: message.sheetId
       }));
+      
+      console.log(`Client subscribed to sheet: ${message.sheetId}`);
     } catch (error) {
       console.error("Error subscribing to sheet:", error);
       ws.send(JSON.stringify({
@@ -87,6 +154,99 @@ export class WebSocketService {
         error: "Failed to subscribe to sheet"
       }));
     }
+  }
+  
+  private handleSheetUpdate(ws: WebSocket, message: z.infer<typeof sheetUpdateMessageSchema>) {
+    try {
+      const timestamp = new Date().toISOString();
+      
+      // Create enhanced update event
+      const updateEvent: SheetUpdateEvent = {
+        type: "sheet_update",
+        sheetId: message.sheetId,
+        operation: message.operation,
+        target: message.target || "sheet",
+        targetId: message.targetId,
+        timestamp,
+        change: message.change || {
+          type: message.target || "sheet",
+          action: message.operation === "insert" ? "created" :
+                 message.operation === "delete" ? "deleted" : "updated",
+          id: message.targetId || message.sheetId,
+          timestamp
+        }
+      };
+      
+      // Broadcast the update to all clients subscribed to this sheet
+      this.broadcastToSheet(message.sheetId, updateEvent);
+      
+      console.log(`Broadcast ${updateEvent.target} ${updateEvent.change?.action} event for sheet ${message.sheetId}`);
+    } catch (error) {
+      console.error("Error handling sheet update:", error);
+      ws.send(JSON.stringify({
+        type: "error",
+        error: "Failed to process sheet update"
+      }));
+    }
+  }
+  
+  /**
+   * Broadcast a message to all clients subscribed to a specific sheet
+   */
+  broadcastToSheet(sheetId: string, message: any): void {
+    this.wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN && (client as any).subscribedSheets?.includes(sheetId)) {
+        client.send(JSON.stringify(message));
+      }
+    });
+  }
+  
+  /**
+   * Broadcast a row update to all clients subscribed to a sheet
+   */
+  broadcastRowUpdate(sheetId: string, rowId: string, action: UpdateAction, data?: any): void {
+    const timestamp = new Date().toISOString();
+    
+    this.broadcastToSheet(sheetId, {
+      type: "sheet_update",
+      sheetId,
+      operation: action === "created" ? "insert" :
+                action === "deleted" ? "delete" : "update",
+      target: "row",
+      targetId: rowId,
+      timestamp,
+      change: {
+        type: "row",
+        action,
+        id: rowId,
+        data,
+        timestamp
+      }
+    });
+  }
+  
+  /**
+   * Broadcast a cell update to all clients subscribed to a sheet
+   */
+  broadcastCellUpdate(sheetId: string, rowId: string, columnId: string, value: any): void {
+    const timestamp = new Date().toISOString();
+    const targetId = `${rowId}_${columnId}`;
+    
+    this.broadcastToSheet(sheetId, {
+      type: "sheet_update",
+      sheetId,
+      operation: "update",
+      target: "cell",
+      targetId,
+      timestamp,
+      change: {
+        type: "cell",
+        action: "updated",
+        id: targetId,
+        data: { rowId, columnId, value },
+        timestamp
+      }
+    });
   }
 
   /**

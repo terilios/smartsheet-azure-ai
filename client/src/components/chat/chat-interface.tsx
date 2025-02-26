@@ -290,7 +290,7 @@ export default function ChatInterface() {
   }
 
   return (
-    <div className="flex flex-col h-full" data-testid="chat-interface">
+    <div className="flex flex-col h-full chat-interface" data-testid="chat-interface">
       {/* Job Progress Dialog */}
       <Dialog open={!!activeJobId} onOpenChange={() => setActiveJobId(null)}>
         <DialogContent>
