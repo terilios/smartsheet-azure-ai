@@ -10,10 +10,18 @@ const router = express.Router();
 // Mount sessions router before session validation middleware
 router.use("/sessions", sessionsRouter);
 
+// Import storage at the top level to avoid dynamic imports in middleware
+import { storage } from "./storage";
+
 // Validate session ID for all other routes
 router.use((req, res, next) => {
   // Skip session validation for session-related endpoints
   if (req.path.startsWith('/sessions')) {
+    return next();
+  }
+  
+  // Skip session validation for smartsheet/verify endpoint
+  if (req.path.startsWith('/smartsheet/verify')) {
     return next();
   }
   
@@ -24,7 +32,32 @@ router.use((req, res, next) => {
       code: "INVALID_SESSION"
     });
   }
-  next();
+  
+  // Log the session ID for debugging
+  console.log(`Validating session ID: ${sessionId}`);
+  
+  // Use a Promise to handle the async session validation
+  storage.getSession(sessionId)
+    .then(session => {
+      if (!session) {
+        console.error(`Session not found: ${sessionId}`);
+        return res.status(400).json({
+          error: "Invalid session ID. Session not found.",
+          code: "INVALID_SESSION"
+        });
+      }
+      
+      // Add the session to the request object for later use
+      (req as any).session = session;
+      next();
+    })
+    .catch(error => {
+      console.error(`Error validating session: ${error}`);
+      return res.status(500).json({
+        error: "Error validating session",
+        code: "SERVER_ERROR"
+      });
+    });
 });
 
 // Create operation message helper

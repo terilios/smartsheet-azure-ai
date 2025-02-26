@@ -32,7 +32,8 @@ export function useSheetUpdates(sheetId: string | null) {
     if (!sheetId) return;
 
     // Create WebSocket connection
-    const ws = new WebSocket(`ws://${window.location.hostname}:3000`);
+    const wsUrl = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:3000`;
+    const ws = new WebSocket(wsUrl);
     let reconnectTimeout: NodeJS.Timeout;
 
     const connect = () => {

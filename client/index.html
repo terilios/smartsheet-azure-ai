@@ -4,6 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ChatSheetAI - Intelligent Spreadsheet Assistant</title>
+    <style>
+      /* Ensure the root element takes full height */
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      /* Add a loading state */
+      #root:empty:before {
+        content: 'Loading...';
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        font-family: system-ui, -apple-system, sans-serif;
+        color: #666;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

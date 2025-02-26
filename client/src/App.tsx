@@ -8,6 +8,7 @@ import "./index.css";
 import "./styles/sheet.css";
 import Home from "./pages/home";
 import NotFound from "./pages/not-found";
+import { ErrorBoundary } from "./components/ui/error-boundary";
 
 function Router() {
   return (
@@ -20,13 +21,15 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <SmartsheetProvider>
-        <Router />
-        <FullscreenSheetIdModal />
-        <Toaster />
-      </SmartsheetProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <SmartsheetProvider>
+          <Router />
+          <FullscreenSheetIdModal />
+          <Toaster />
+        </SmartsheetProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

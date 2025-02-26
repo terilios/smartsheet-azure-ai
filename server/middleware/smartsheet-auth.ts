@@ -1,20 +1,39 @@
 import { Request, Response, NextFunction } from "express";
 import { smartsheetTools } from "../tools/smartsheet";
 
-export function requireSmartsheetAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireSmartsheetAuth(req: Request, res: Response, next: NextFunction) {
   // Skip auth check for the config endpoint itself
-  if (req.path === "/api/smartsheet/config") {
+  if (req.path === "/config") {
     return next();
   }
 
+  // Skip auth check for the verify endpoint
+  if (req.path.startsWith("/verify/")) {
+    return next();
+  }
+
+  // Set the access token from the environment variable
+  const token = process.env.SMARTSHEET_ACCESS_TOKEN || "";
+  if (!token) {
+    console.error('SMARTSHEET_ACCESS_TOKEN environment variable is not set');
+    return res.status(401).json({
+      success: false,
+      error: "Smartsheet access token is not configured in the environment.",
+      code: "SMARTSHEET_NOT_CONFIGURED"
+    });
+  }
+
+  smartsheetTools.setAccessToken(token);
+
   try {
     // This will throw if not configured
-    smartsheetTools["ensureClient"]();
+    await smartsheetTools.ensureClient();
     next();
   } catch (error) {
+    console.error('Error in Smartsheet authentication middleware:', error);
     res.status(401).json({
       success: false,
-      error: "Smartsheet is not configured. Please set your access token first.",
+      error: "Smartsheet is not configured properly. Please check your access token.",
       code: "SMARTSHEET_NOT_CONFIGURED"
     });
   }

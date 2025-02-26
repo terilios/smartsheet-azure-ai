@@ -9,6 +9,8 @@ import router from './routes.js';
 import jobsRouter from './routes/jobs.js';
 import webhookRouter from './routes/webhooks.js';
 import sessionsRouter from './routes/sessions.js';
+import smartsheetRouter from './routes/smartsheet.js';
+import messagesRouter from './routes/messages.js';
 import { jobQueue } from './jobs/queue.js';
 import { WebSocketService } from './services/websocket.js';
 import bodyParser from 'body-parser';
@@ -81,6 +83,8 @@ app.use(express.json());
 app.use('/api', router);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/sessions', sessionsRouter);
+app.use('/api/smartsheet', smartsheetRouter);
+app.use('/api/messages', messagesRouter);
 app.use('/webhooks', webhookRouter);
 
 // Health check endpoint

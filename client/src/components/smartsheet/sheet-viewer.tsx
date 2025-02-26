@@ -178,32 +178,60 @@ export default function SheetViewer({ data, isLoading, error, onRetry }: SheetVi
   );
   const [wrapText, setWrapText] = useState(true);
 
+  console.log('SheetViewer render:', {
+    isLoading,
+    hasError: !!error,
+    hasData: !!data,
+    dataDetails: data ? {
+      sheetId: data.sheetId,
+      sheetName: data.sheetName,
+      columnCount: data.columns.length,
+      rowCount: data.rows.length
+    } : null
+  });
+
   if (isLoading) {
     return <LoadingState />;
   }
 
   if (error) {
+    console.error('SheetViewer error:', error);
     return <ErrorState error={error} onRetry={onRetry} />;
   }
 
   if (!data) {
+    console.warn('SheetViewer: No data available');
     return <EmptyState />;
   }
 
   // Filter function
   const filteredRows = useMemo(() => {
-    return data.rows.filter((row) =>
+    console.log(`Filtering ${data.rows.length} rows with search term: "${searchTerm}"`);
+    
+    if (!searchTerm) {
+      return data.rows;
+    }
+    
+    const filtered = data.rows.filter((row) =>
       Object.values(row).some((value) =>
         String(value).toLowerCase().includes(searchTerm.toLowerCase())
       )
     );
+    
+    console.log(`Filtered to ${filtered.length} rows`);
+    return filtered;
   }, [data.rows, searchTerm]);
 
   // Sort function
   const sortedRows = useMemo(() => {
-    if (!sortConfig.column) return filteredRows;
+    if (!sortConfig.column) {
+      console.log(`No sorting applied, using ${filteredRows.length} filtered rows`);
+      return filteredRows;
+    }
 
-    return [...filteredRows].sort((a, b) => {
+    console.log(`Sorting by column: ${sortConfig.column} (${sortConfig.direction})`);
+    
+    const sorted = [...filteredRows].sort((a, b) => {
       const aVal = a[sortConfig.column!];
       const bVal = b[sortConfig.column!];
 
@@ -214,6 +242,9 @@ export default function SheetViewer({ data, isLoading, error, onRetry }: SheetVi
       const comparison = aVal < bVal ? -1 : 1;
       return sortConfig.direction === "asc" ? comparison : -comparison;
     });
+    
+    console.log(`Sorted ${sorted.length} rows`);
+    return sorted;
   }, [filteredRows, sortConfig]);
 
   const handleSort = (columnTitle: string) => {

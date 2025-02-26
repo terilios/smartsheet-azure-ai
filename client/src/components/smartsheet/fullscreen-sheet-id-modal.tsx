@@ -75,10 +75,26 @@ export function FullscreenSheetIdModal({ onComplete }: FullscreenSheetIdModalPro
         throw new Error('Invalid session data');
       }
 
-      // Validate the sheet ID by attempting to fetch sheet data
-      const sheetResponse = await fetch(`/api/smartsheet/${trimmedSheetId}`);
+      // Verify sheet access first
+      const sheetVerifyResponse = await fetch(`/api/smartsheet/verify/${trimmedSheetId}`, {
+        headers: {
+          'x-session-id': sessionId
+        }
+      });
+      if (!sheetVerifyResponse.ok) {
+        const errorData = await sheetVerifyResponse.json();
+        throw new Error(errorData.error || 'Invalid Sheet ID or unable to access sheet');
+      }
+      
+      // Fetch sheet data
+      const sheetResponse = await fetch(`/api/smartsheet/${trimmedSheetId}`, {
+        headers: {
+          'x-session-id': sessionId
+        }
+      });
       if (!sheetResponse.ok) {
-        throw new Error('Invalid Sheet ID or unable to access sheet');
+        const errorData = await sheetResponse.json();
+        throw new Error(errorData.error || 'Failed to load sheet data');
       }
 
       // Update the global context with both IDs

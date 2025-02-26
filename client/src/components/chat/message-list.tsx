@@ -3,8 +3,6 @@ import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface MessageListProps {
@@ -15,10 +13,16 @@ interface MessageListProps {
 export default function MessageList({ messages, isLoading }: MessageListProps) {
   // Sort messages by timestamp to ensure correct order
   const sortedMessages = [...messages].sort((a, b) => {
-    const timeA = new Date(a.timestamp || 0).getTime();
-    const timeB = new Date(b.timestamp || 0).getTime();
+    const timeA = new Date(a.metadata.timestamp || 0).getTime();
+    const timeB = new Date(b.metadata.timestamp || 0).getTime();
     return timeA - timeB;
   });
+
+  const getErrorMessage = (error: unknown): string => {
+    if (typeof error === 'string') return error;
+    if (error instanceof Error) return error.message;
+    return 'An error occurred while processing your request';
+  };
 
   return (
     <div className="space-y-4 mb-4">
@@ -31,7 +35,7 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
 
         return (
           <div
-            key={`${message.timestamp}-${i}`}
+            key={`${message.metadata.timestamp}-${i}`}
             className={cn(
               "flex gap-3 p-4 rounded-lg transition-colors",
               isAssistant ? "bg-muted/50" : "bg-background",
@@ -56,72 +60,18 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
                 </div>
               ) : (
                 <div className="prose dark:prose-invert max-w-none break-words">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      code({ className, children }) {
-                        const match = /language-(\w+)/.exec(className || '');
-                        return match ? (
-                          <SyntaxHighlighter
-                            language={match[1]}
-                            style={vscDarkPlus}
-                            PreTag="div"
-                          >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
-                        ) : (
-                          <code className={className}>{children}</code>
-                        );
-                      },
-                      table({ children }) {
-                        return (
-                          <div className="overflow-x-auto">
-                            <table className="border-collapse table-auto w-full">
-                              {children}
-                            </table>
-                          </div>
-                        );
-                      },
-                      th({ children }) {
-                        return (
-                          <th className="border border-slate-600 dark:border-slate-700 p-2 text-left bg-slate-100 dark:bg-slate-800">
-                            {children}
-                          </th>
-                        );
-                      },
-                      td({ children }) {
-                        return (
-                          <td className="border border-slate-600 dark:border-slate-700 p-2">
-                            {children}
-                          </td>
-                        );
-                      },
-                      ul({ children }) {
-                        return <ul className="list-disc pl-4 my-2">{children}</ul>;
-                      },
-                      ol({ children }) {
-                        return <ol className="list-decimal pl-4 my-2">{children}</ol>;
-                      },
-                      blockquote({ children }) {
-                        return (
-                          <blockquote className="border-l-4 border-slate-300 dark:border-slate-700 pl-4 my-2 italic">
-                            {children}
-                          </blockquote>
-                        );
-                      }
-                    }}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
+                  {message.content && (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  )}
                 </div>
               )}
               {isError && message.metadata?.error && (
                 <Alert variant="destructive" className="mt-2">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    {typeof message.metadata.error === 'string' 
-                      ? message.metadata.error 
-                      : 'An error occurred while processing your request'}
+                    {getErrorMessage(message.metadata.error) as string}
                   </AlertDescription>
                 </Alert>
               )}

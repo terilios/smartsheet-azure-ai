@@ -75,13 +75,17 @@ export async function getChatCompletion(options: ChatCompletionOptions): Promise
 
   try {
     // Construct the payload once to ensure consistency
-    const payload = {
+    const payload: Record<string, any> = {
       messages,
       max_tokens: 800,
       temperature: 0.7,
-      model: config.deployment,
-      functions: tools?.map(tool => tool.function) || [] // Extract just the function definitions
+      model: config.deployment
     };
+    
+    // Only include functions if tools are provided
+    if (tools && tools.length > 0) {
+      payload.functions = tools.map(tool => tool.function);
+    }
     
     console.log("LLM Payload: ", JSON.stringify(payload, null, 2));
     
@@ -108,8 +112,7 @@ export async function getChatCompletion(options: ChatCompletionOptions): Promise
     console.error('LLM error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error : new Error(String(error))
-    };
+      error: error instanceof Error ? error : new Error(String(error)) };
   }
 }
 

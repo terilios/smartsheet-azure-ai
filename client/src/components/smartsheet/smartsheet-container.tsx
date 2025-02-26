@@ -92,15 +92,19 @@ export default function SmartsheetContainer({ sheetId }: SmartsheetContainerProp
   const { data: response, error, isLoading } = useQuery<QueryResponse, SmartsheetError>({
     queryKey: ["/api/smartsheet", sheetId],
     queryFn: async () => {
+      console.log(`Fetching sheet data for sheet ID: ${sheetId}`);
       const res = await apiRequest("GET", `/api/smartsheet/${sheetId}`);
       if (!res.ok) {
         const errorData = await res.json() as ApiErrorResponse;
+        console.error('Error fetching sheet data:', errorData);
         throw new SmartsheetError(
           errorData.error || "Failed to fetch sheet data",
           errorData
         );
       }
-      return res.json() as Promise<QueryResponse>;
+      const data = await res.json() as QueryResponse;
+      console.log('Sheet data received:', data);
+      return data;
     }
   });
 

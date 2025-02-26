@@ -31,6 +31,8 @@ SMARTSHEET_ACCESS_TOKEN=your_smartsheet_access_token
 SMARTSHEET_WEBHOOK_SECRET=your_webhook_secret
 ```
 
+> **Important**: The Smartsheet access token is required for the application to function properly. You can generate a new access token from the [Smartsheet Developer Tools](https://app.smartsheet.com/b/home?lx=pOG4v9lfJFh-aB21-QZ_rg) page. Go to "Personal Settings" > "API Access" to generate a new token.
+
 ### Client Configuration (`client/.env`)
 
 Create a `client/.env` file with frontend configuration (see `client/.env.example` for template):
@@ -185,3 +187,70 @@ This will:
 
 - Drop the test database if it exists
 - Remove TEST_DATABASE_URL from your server/.env file
+
+## Smartsheet Integration
+
+The application integrates with the Smartsheet API to access and manipulate sheet data. This integration requires proper configuration and permissions.
+
+### Smartsheet API Configuration
+
+1. Generate an access token from the [Smartsheet Developer Tools](https://app.smartsheet.com/b/home?lx=pOG4v9lfJFh-aB21-QZ_rg) page:
+
+   - Go to "Personal Settings" > "API Access"
+   - Click "Generate new access token"
+   - Copy the token (it will only be shown once)
+
+2. Add the token to your `server/.env` file:
+
+   ```env
+   SMARTSHEET_ACCESS_TOKEN=your_generated_token
+   ```
+
+3. Set up a webhook secret (used for verifying webhook requests):
+   ```env
+   SMARTSHEET_WEBHOOK_SECRET=your_webhook_secret
+   ```
+   This can be any secure random string.
+
+### Testing Your Smartsheet Token
+
+The project includes a script to test your Smartsheet access token:
+
+```bash
+node scripts/test-smartsheet-token.js
+```
+
+This script will:
+
+- Verify that your token is valid
+- Check that it has the necessary permissions
+- List available sheets
+- Test access to a sheet
+
+### Troubleshooting Smartsheet API Issues
+
+If you encounter issues with the Smartsheet API:
+
+1. **Invalid Sheet ID Error**:
+
+   - Verify that the Sheet ID is correct
+   - Check that the Sheet ID is numeric
+   - Ensure you have access to the sheet with your account
+
+2. **Authentication Issues**:
+
+   - Verify your access token is valid using the test script
+   - Check if the token has expired (tokens expire after 1 year)
+   - Generate a new token if necessary
+
+3. **Permission Issues**:
+
+   - Ensure your Smartsheet account has access to the sheet
+   - Check if the sheet requires special permissions
+   - Verify that your token has the necessary scopes
+
+4. **API Rate Limiting**:
+   - The application includes retry logic for transient failures
+   - If you encounter persistent rate limiting, reduce the frequency of requests
+
+For more information about the Smartsheet API, refer to the [Smartsheet API Documentation](https://smartsheet.redoc.ly/).

@@ -39,6 +39,8 @@ services:
       DATABASE_URL: postgres://user:pass@db:5432/chatsheetai
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      SMARTSHEET_ACCESS_TOKEN: ${SMARTSHEET_ACCESS_TOKEN}
+      SMARTSHEET_WEBHOOK_SECRET: ${SMARTSHEET_WEBHOOK_SECRET}
     depends_on:
       db:
         condition: service_healthy

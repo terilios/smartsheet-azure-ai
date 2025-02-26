@@ -20,12 +20,31 @@ export default function ChatInterface() {
 
   // Reset view when session changes
   useEffect(() => {
-    if (!currentSessionId) {
-      setView('welcome');
+    try {
+      if (!currentSessionId) {
+        setView('welcome');
+      }
+    } catch (error) {
+      console.error('Error in session effect:', error);
     }
   }, [currentSessionId]);
 
-  const { data: messages = [], isLoading: isLoadingMessages } = useQuery<Message[]>({
+  // Add error boundary effect
+  useEffect(() => {
+    const handleError = (error: ErrorEvent) => {
+      console.error('Error in ChatInterface:', error);
+      toast({
+        title: "Error",
+        description: "An error occurred in the chat interface. Please try refreshing the page.",
+        variant: "destructive"
+      });
+    };
+
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, [toast]);
+
+  const { data: messages = [], isLoading: isLoadingMessages, error: messagesError } = useQuery<Message[]>({
     queryKey: ["/api/messages", currentSessionId],
     queryFn: async () => {
       if (!currentSessionId) return [];
@@ -81,7 +100,7 @@ export default function ChatInterface() {
       .filter((msg: Message) => msg.role !== 'system')
       .reduce((acc: Message[], curr: Message) => {
         const exists = acc.some(msg => 
-          msg.timestamp === curr.timestamp && 
+          msg.metadata.timestamp === curr.metadata.timestamp && 
           msg.content === curr.content
         );
         if (!exists) acc.push(curr);
@@ -231,7 +250,7 @@ export default function ChatInterface() {
               </div>
               <div className="divide-y border rounded-lg">
                 {Object.entries(messages.reduce<Record<string, Message[]>>((groups, message) => {
-                  const date = new Date(message.timestamp || Date.now());
+                  const date = new Date(message.metadata.timestamp || Date.now());
                   const key = format(date, 'PP');
                   if (!groups[key]) groups[key] = [];
                   groups[key].push(message);
@@ -254,8 +273,24 @@ export default function ChatInterface() {
     );
   }
 
+  // Show error state if messages query failed
+  if (messagesError) {
+    return (
+      <div className="p-4">
+        <h2 className="text-lg font-semibold text-red-600 mb-2">Failed to load messages</h2>
+        <p className="text-sm text-gray-600 mb-4">{messagesError instanceof Error ? messagesError.message : 'Unknown error'}</p>
+        <Button 
+          onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/messages"] })}
+          variant="outline"
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="chat-interface">
       {/* Job Progress Dialog */}
       <Dialog open={!!activeJobId} onOpenChange={() => setActiveJobId(null)}>
         <DialogContent>
