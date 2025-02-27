@@ -8,6 +8,13 @@
       "when": 1739153403442,
       "tag": "0000_wandering_microchip",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1740531200000,
+      "tag": "0001_add_users",
+      "breakpoints": true
     }
   ]
 }

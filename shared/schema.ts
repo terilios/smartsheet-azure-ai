@@ -1,5 +1,26 @@
 import { z } from "zod";
 
+// User
+export const userSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+});
+
+export type User = z.infer<typeof userSchema>;
+
+// Chat Session
+export const chatSessionSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  sheetId: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  messages: z.array(z.any()).optional(),
+});
+
+export type ChatSession = z.infer<typeof chatSessionSchema>;
+
 // Column Types
 export const columnTypeSchema = z.enum([
   "TEXT_NUMBER",
