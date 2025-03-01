@@ -1,8 +1,8 @@
 import { Router } from "express";
 import crypto from "crypto";
 import { sheetCache } from "../services/cache.js";
-import { WebSocket } from "ws";
 import { z } from "zod";
+import { serverEventBus, ServerEventType } from "../services/events.js";
 
 const router = Router();
 
@@ -24,44 +24,6 @@ const webhookEventSchema = z.object({
     timestamp: z.string()
   }))
 });
-
-// Store WebSocket clients for broadcasting updates
-const clients = new Map<string, Set<WebSocket>>();
-
-/**
- * Subscribe a WebSocket client to sheet updates
- */
-export function subscribeToSheet(sheetId: string, ws: WebSocket) {
-  if (!clients.has(sheetId)) {
-    clients.set(sheetId, new Set());
-  }
-  clients.get(sheetId)?.add(ws);
-
-  // Clean up on client disconnect
-  ws.on("close", () => {
-    const sheetClients = clients.get(sheetId);
-    if (sheetClients) {
-      sheetClients.delete(ws);
-      if (sheetClients.size === 0) {
-        clients.delete(sheetId);
-      }
-    }
-  });
-}
-
-/**
- * Broadcast an update to all clients subscribed to a sheet
- */
-function broadcastUpdate(sheetId: string, event: any) {
-  const sheetClients = clients.get(sheetId);
-  if (sheetClients) {
-    sheetClients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(event));
-      }
-    });
-  }
-}
 
 /**
  * Verify webhook request signature
@@ -92,6 +54,10 @@ router.post("/smartsheet/webhook", async (req, res) => {
     // Verify request signature
     if (!verifyWebhookSignature(req)) {
       console.error("Invalid webhook signature");
+      serverEventBus.publish(ServerEventType.SYSTEM_WARNING, {
+        message: "Invalid webhook signature received",
+        source: "webhooks"
+      });
       return res.status(401).json({ error: "Invalid signature" });
     }
 
@@ -99,6 +65,11 @@ router.post("/smartsheet/webhook", async (req, res) => {
     const challengeResult = webhookChallengeSchema.safeParse(req.body);
     if (challengeResult.success) {
       // Respond to webhook verification challenge
+      serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+        message: "Webhook verification challenge received",
+        webhookId: challengeResult.data.webhookId,
+        source: "webhooks"
+      });
       return res.json({
         smartsheetHookResponse: challengeResult.data.challenge
       });
@@ -108,6 +79,11 @@ router.post("/smartsheet/webhook", async (req, res) => {
     const eventResult = webhookEventSchema.safeParse(req.body);
     if (!eventResult.success) {
       console.error("Invalid webhook event format:", eventResult.error);
+      serverEventBus.publish(ServerEventType.SYSTEM_ERROR, {
+        message: "Invalid webhook event format",
+        error: eventResult.error.message,
+        source: "webhooks"
+      });
       return res.status(400).json({ error: "Invalid event format" });
     }
 
@@ -120,23 +96,61 @@ router.post("/smartsheet/webhook", async (req, res) => {
 
       // Invalidate cache for the affected sheet
       sheetCache.invalidate(sheetId);
-
-      // Broadcast update to connected clients
-      broadcastUpdate(sheetId, {
-        type: "sheet_update",
+      
+      // Publish cache invalidation event
+      serverEventBus.publish(ServerEventType.CACHE_INVALIDATED, {
         sheetId,
-        change: {
-          type: change.objectType,
+        reason: `${change.objectType} ${change.action}`,
+        source: "webhooks"
+      });
+
+      // Publish appropriate event based on the change type
+      if (change.objectType === "sheet") {
+        serverEventBus.publish(ServerEventType.SHEET_DATA_UPDATED, {
+          sheetId,
           action: change.action,
           id: change.id,
-          timestamp: change.timestamp
+          timestamp: change.timestamp,
+          source: "webhooks"
+        });
+      } else if (change.objectType === "row") {
+        switch (change.action) {
+          case "created":
+            serverEventBus.publish(ServerEventType.SHEET_ROW_ADDED, {
+              sheetId,
+              rowId: change.id,
+              timestamp: change.timestamp,
+              source: "webhooks"
+            });
+            break;
+          case "updated":
+            serverEventBus.publish(ServerEventType.SHEET_ROW_UPDATED, {
+              sheetId,
+              rowId: change.id,
+              timestamp: change.timestamp,
+              source: "webhooks"
+            });
+            break;
+          case "deleted":
+            serverEventBus.publish(ServerEventType.SHEET_ROW_DELETED, {
+              sheetId,
+              rowId: change.id,
+              timestamp: change.timestamp,
+              source: "webhooks"
+            });
+            break;
         }
-      });
+      }
     }
 
     res.json({ status: "success" });
   } catch (error) {
     console.error("Error processing webhook:", error);
+    serverEventBus.publish(ServerEventType.SYSTEM_ERROR, {
+      message: "Error processing webhook",
+      error: error instanceof Error ? error.message : "Unknown error",
+      source: "webhooks"
+    });
     res.status(500).json({ error: "Internal server error" });
   }
 });

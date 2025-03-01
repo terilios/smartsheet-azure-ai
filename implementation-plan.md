@@ -1,318 +1,142 @@
-# ChatSheetAI Implementation Plan
+# ChatSheetAI Orchestration Issues: Implementation Plan
 
-Based on the architectural assessment, this document outlines a detailed implementation plan to address the identified issues and improve the overall stability and functionality of the ChatSheetAI application.
+This document outlines a systematic approach to resolving the orchestration issues identified in the architectural assessment. The issues are prioritized based on their impact on system stability, dependencies between components, and complexity of implementation.
 
-## Phase 1: Critical Fixes (Immediate Priority)
+## Priority Order and Rationale
 
-### 0. Fix LLM Context and System Prompt
+1. **Session Management** - Foundational issue that affects all other components
+2. **Tool Execution** - Critical for LLM functionality and depends on proper session context
+3. **WebSocket Management** - Essential for real-time updates but depends on session management
+4. **Cache Coordination** - Important for data consistency but depends on the above components
+5. **Job Lifecycle** - Important for background processing but relatively isolated from core data flow
 
-#### Issue
+## Phase 1: Session Management Improvements (Weeks 1-2)
 
-The LLM doesn't understand that it already has the context of the sheet and doesn't have access to sheet data when a new chat is started. This leads to the LLM asking for information it should already have, such as column IDs.
+### 1.1. Enhance Session Validation Logic
 
-#### Implementation Steps
+- Modify `client/src/lib/session-validator.ts` to validate sheet data presence
+- Update `server/routes/sessions.ts` to ensure sheet data is loaded before returning success
+- Add explicit session deletion functionality for error cases
 
-1. **Automatically Load Sheet Data on Session Start**
+### 1.2. Implement Session State Management
 
-   - Modify the session creation process to automatically load sheet data
-   - Store sheet data in the session context
-   - Ensure sheet data is refreshed periodically to stay current
+- Add SessionState enum (INITIALIZING, ACTIVE, ERROR, CLOSED) to session schema
+- Update session creation and validation to use this state
+- Add methods to update session state with proper error tracking
 
-2. **Enhance System Prompt with Detailed Sheet Context**
+### 1.3. Implement Session Recovery
 
-   - Update the system prompt to include comprehensive sheet information
-   - Include column IDs and types in the system prompt
-   - Add explicit examples of how to use each tool
-   - Provide clear instructions on how to reference columns and rows
+- Enhance client-side session validator with recovery functionality
+- Add server endpoint for explicit sheet data loading
+- Implement graceful fallback for sessions with missing data
 
-3. **Implement Proactive Sheet Data Loading**
+## Phase 2: Tool Execution Improvements (Weeks 3-4)
 
-   - Load sheet data when a new chat session is created, not just on explicit request
-   - Add a background process to refresh sheet data periodically
-   - Cache sheet data for better performance
+### 2.1. Standardize Error Handling in Tool Execution
 
-4. **Add Tool Usage Examples in System Prompt**
-   - Include specific examples of how to use each tool
-   - Show how to reference column IDs and row IDs
-   - Demonstrate common operations like adding rows, updating cells, etc.
+- Create standardized ToolResult interface with consistent success/error format
+- Update ToolExecutor class to use standardized result format
+- Ensure consistent error propagation to the LLM
 
-#### Files to Modify
+### 2.2. Implement Retry Logic for Transient Failures
 
-- `server/routes/messages.ts` - Update system prompt and sheet data loading
-- `server/routes/sessions.ts` - Add sheet data loading on session creation
-- `server/services/llm.ts` - Enhance prompt handling and tool integration
+- Create tool-specific retry utility extending the existing retry mechanism
+- Add transient error detection (rate limits, timeouts, network issues)
+- Implement exponential backoff for retries
 
-#### Example System Prompt Enhancement
+### 2.3. Improve Tool Result Communication to LLM
 
-```
-You are an AI assistant that helps users analyze and interact with their Smartsheet data.
-The current sheet ID is {sheetId}.
+- Update follow-up message generation with structured tool results
+- Enhance system prompt with guidance on handling tool errors
+- Add explicit error handling examples for common failure cases
 
-Sheet Information:
-Name: {sheetName}
-Columns: {columns with IDs and types}
-Total Rows: {totalRows}
+## Phase 3: WebSocket Management Consolidation (Weeks 5-6)
 
-Column Structure:
-{detailed column information including IDs}
+### 3.1. Consolidate WebSocket Implementation
 
-Sample data from the first few rows:
-{sample data}
+- Enhance WebSocketService with comprehensive subscription management
+- Update webhook handling to use the consolidated WebSocketService
+- Remove duplicate subscription logic from webhook routes
 
-You can perform the following operations on this sheet using these tools:
+### 3.2. Implement WebSocket Reconnection Logic
 
-1. Add a new row:
-   Example: To add a row with ID=90, use the addRow tool with:
-   {
-     "cells": [
-       {"columnId": "columnIdForID", "value": "90"},
-       {"columnId": "anotherColumnId", "value": "some value"}
-     ]
-   }
+- Create robust client-side WebSocket client with reconnection
+- Add subscription tracking and automatic resubscription
+- Implement heartbeat mechanism with ping/pong messages
 
-2. Update a cell:
-   Example: To update a cell, use the updateCell tool with:
-   {
-     "rowId": "rowId",
-     "columnName": "columnName",
-     "value": "new value"
-   }
+### 3.3. Enhance WebSocket Security and Authentication
 
-[Additional examples for other tools...]
+- Add session validation for WebSocket connections
+- Implement proper authentication for subscription requests
+- Add rate limiting for WebSocket connections
 
-When a user asks you to perform an operation, use the appropriate tool directly without asking for additional information that is already available in this context.
-```
+## Phase 4: Cache Coordination Improvements (Weeks 7-8)
 
-### 1. Fix Azure OpenAI API Configuration
+### 4.1. Implement Event-Driven Cache Invalidation
 
-#### Issue
+- Create a CacheInvalidationEvent in the event system
+- Ensure all data modification operations trigger invalidation events
+- Add listeners for invalidation events in both client and server caches
 
-The error message indicates that the Azure OpenAI service is configured to use private endpoints only, but the application is attempting to access it via public endpoints.
+### 4.2. Coordinate Client and Server Caching
 
-#### Implementation Steps
+- Add cache version tracking to detect stale data
+- Implement cache headers in API responses
+- Create a unified caching strategy document
 
-1. **Review Current Configuration**
+### 4.3. Add Cache Warming for Common Operations
 
-   - Examine the current Azure OpenAI API configuration in the application
-   - Check environment variables and configuration files
-   - Identify where the API endpoint is defined
+- Implement predictive cache warming for frequently accessed data
+- Add background refresh for cached data approaching expiration
+- Create cache analytics to optimize caching strategy
 
-2. **Update API Endpoint Configuration**
+## Phase 5: Job Lifecycle Management (Weeks 9-10)
 
-   - Update the Azure OpenAI API endpoint to use the correct private endpoint
-   - Ensure proper authentication is configured for the private endpoint
-   - Update any related configuration parameters (API version, deployment name, etc.)
+### 5.1. Enhance Job Creation and Tracking
 
-3. **Implement Better Error Handling**
+- Create a JobManager service to centralize job management
+- Add explicit relationship between jobs and sessions
+- Implement comprehensive job metadata tracking
 
-   - Add specific error handling for Azure OpenAI API connectivity issues
-   - Implement clear error messages for configuration-related problems
-   - Add logging to track API request/response cycles
+### 5.2. Improve Progress Updates
 
-4. **Test API Connectivity**
-   - Create a simple test script to verify connectivity to the Azure OpenAI API
-   - Ensure proper authentication and authorization
-   - Validate that the API returns expected responses
+- Enhance WebSocket notifications for job progress
+- Add catch-up mechanism for clients connecting mid-job
+- Implement detailed progress tracking with subtasks
 
-#### Files to Modify
+### 5.3. Implement Job Cleanup and Resource Management
 
-- `server/services/llm.ts` - Update API endpoint configuration and error handling
-- `.env` or `.env.example` - Update environment variable documentation
-- `server/routes/messages.ts` - Enhance error handling for API issues
-
-### 2. Address React Hooks Issues
-
-#### Issue
-
-The application is experiencing the "Rendered more hooks than during the previous render" error, which indicates inconsistent hook usage across renders.
-
-#### Implementation Steps
-
-1. **Analyze Component Rendering Paths**
-
-   - Review the component tree to identify conditional rendering that affects hooks
-   - Check for components that might be unmounted and remounted unexpectedly
-   - Identify hooks that might be called conditionally
-
-2. **Fix FullscreenSheetIdModal Component**
-
-   - Simplify the modal's rendering logic to ensure consistent hook execution
-   - Move state initialization outside of conditional blocks
-   - Ensure hooks are called in the same order on every render
-
-3. **Refactor ChatInterface Component**
-
-   - Review and simplify state management
-   - Ensure consistent hook usage patterns
-   - Consider extracting complex logic into custom hooks
-
-4. **Update Home Component**
-   - Ensure consistent rendering of child components
-   - Remove any conditional rendering that affects hook execution
-   - Simplify the split panel implementation
-
-#### Files to Modify
-
-- `client/src/components/smartsheet/fullscreen-sheet-id-modal.tsx`
-- `client/src/components/chat/chat-interface.tsx`
-- `client/src/pages/home.tsx`
-
-## Phase 2: Stability Improvements (Short-term Priority)
-
-### 1. Enhance Session Management
-
-#### Issue
-
-There appear to be issues with session management, particularly when transitioning between the chat interface and the sheet ID modal.
-
-#### Implementation Steps
-
-1. **Implement Robust Session Validation**
-
-   - Create a centralized session validation mechanism
-   - Ensure consistent session ID handling across components
-   - Add session recovery logic for expired or invalid sessions
-
-2. **Improve Session Creation Flow**
-
-   - Streamline the session creation process
-   - Add proper error handling for session creation failures
-   - Implement retry logic for transient failures
-
-3. **Enhance Session State Management**
-   - Update the SmartsheetProvider to handle session state more robustly
-   - Implement proper session lifecycle management
-   - Add clear error messaging for session-related issues
-
-#### Files to Modify
-
-- `client/src/lib/smartsheet-context.tsx`
-- `server/routes/sessions.ts`
-- `server/middleware/smartsheet-auth.ts`
-
-### 2. Improve Component Integration
-
-#### Issue
-
-The integration between the chat interface and the sheet viewer may not be properly synchronized, leading to state inconsistencies.
-
-#### Implementation Steps
-
-1. **Implement Event System**
-
-   - Create a simple pub/sub event system for cross-component communication
-   - Define clear events for important state changes
-   - Ensure components can subscribe to relevant events
-
-2. **Synchronize State Updates**
-
-   - Ensure consistent state updates across components
-   - Implement proper data flow patterns
-   - Add synchronization mechanisms for critical operations
-
-3. **Enhance WebSocket Integration**
-   - Improve the WebSocket service to handle more event types
-   - Ensure proper reconnection logic
-   - Add better error handling for WebSocket failures
-
-#### Files to Modify
-
-- `client/src/lib/smartsheet-context.tsx`
-- `client/src/hooks/use-sheet-updates.ts`
-- `server/services/websocket.ts`
-
-## Phase 3: Long-term Enhancements (Future Priority)
-
-### 1. Refactor State Management
-
-#### Implementation Steps
-
-1. **Evaluate State Management Options**
-
-   - Research appropriate state management libraries (Redux, Zustand, Jotai, etc.)
-   - Consider the specific needs of the application
-   - Choose a solution that balances complexity and functionality
-
-2. **Implement Centralized State Management**
-
-   - Migrate existing state to the chosen solution
-   - Separate UI state from application state
-   - Implement proper data flow patterns
-
-3. **Update Components to Use New State Management**
-   - Refactor components to use the new state management solution
-   - Ensure consistent state access patterns
-   - Add proper error handling for state operations
-
-### 2. Enhance Error Handling and Resilience
-
-#### Implementation Steps
-
-1. **Implement Comprehensive Error Boundaries**
-
-   - Add error boundaries at appropriate levels in the component tree
-   - Ensure proper error reporting
-   - Implement graceful degradation for component failures
-
-2. **Add Retry Mechanisms**
-
-   - Implement retry logic for transient failures
-   - Add exponential backoff for repeated failures
-   - Ensure proper timeout handling
-
-3. **Improve User Feedback**
-   - Enhance error messaging for better user understanding
-   - Add loading states for long-running operations
-   - Implement proper notification system for important events
+- Add scheduled job cleanup based on age and status
+- Implement resource usage tracking for jobs
+- Create job archiving for completed jobs
 
 ## Implementation Timeline
 
-### Week 1: Critical Fixes
+| Phase | Component            | Weeks | Key Deliverables                                            |
+| ----- | -------------------- | ----- | ----------------------------------------------------------- |
+| 1     | Session Management   | 1-2   | Enhanced session validation, state management, recovery     |
+| 2     | Tool Execution       | 3-4   | Standardized error handling, retry logic, LLM communication |
+| 3     | WebSocket Management | 5-6   | Consolidated implementation, reconnection logic, security   |
+| 4     | Cache Coordination   | 7-8   | Event-driven invalidation, client-server coordination       |
+| 5     | Job Lifecycle        | 9-10  | Enhanced tracking, progress updates, cleanup                |
 
-- Day 1-2: Fix Azure OpenAI API Configuration
-- Day 3-5: Address React Hooks Issues
-- Day 5: Testing and validation
+## Testing Strategy
 
-### Week 2: Stability Improvements
+Each phase will include:
 
-- Day 1-3: Enhance Session Management
-- Day 4-5: Improve Component Integration
-- Day 5: Testing and validation
+1. **Unit Tests** - For individual components and functions
+2. **Integration Tests** - For component interactions
+3. **End-to-End Tests** - For complete workflows
+4. **Load Tests** - For performance under load
 
-### Week 3+: Long-term Enhancements
+## Success Metrics
 
-- Week 3: Research and plan state management refactoring
-- Week 4: Implement centralized state management
-- Week 5: Enhance error handling and resilience
-- Week 6: Final testing and documentation
-
-## Success Criteria
-
-1. **Azure OpenAI API**
-
-   - Successful connection to the Azure OpenAI API
-   - Proper error handling for API issues
-   - Clear error messages for configuration problems
-
-2. **React Hooks**
-
-   - No more "Rendered more hooks than during the previous render" errors
-   - Consistent component rendering
-   - Stable application behavior
-
-3. **Session Management**
-
-   - Reliable session creation and validation
-   - Proper error recovery for session failures
-   - Consistent session state across components
-
-4. **Component Integration**
-   - Synchronized state between chat interface and sheet viewer
-   - Reliable real-time updates
-   - Consistent user experience
+- **Session Reliability**: >99.9% successful session validations
+- **Tool Execution**: >99% successful tool executions
+- **WebSocket Stability**: <1% connection drops per day
+- **Cache Efficiency**: >90% cache hit rate for common operations
+- **Job Completion**: >99.5% successful job completions
 
 ## Conclusion
 
-This implementation plan addresses the critical issues identified in the architectural assessment and provides a clear path forward for improving the ChatSheetAI application. By focusing on the most critical issues first and then moving on to stability improvements and long-term enhancements, we can ensure a stable and reliable application that meets user needs.
-
-The most immediate priority is to fix the Azure OpenAI API configuration issue, as this is preventing the core AI functionality from working. Once this is resolved, we can address the React hooks issues and session management to improve overall application stability.
+This implementation plan addresses the orchestration issues in a systematic way, starting with the most foundational components and working up to higher-level functionality. By following this plan, the development team can significantly improve the reliability, maintainability, and user experience of the ChatSheetAI application.

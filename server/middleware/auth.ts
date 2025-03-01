@@ -6,7 +6,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { getAuthService } from '../services/auth';
+import { authService } from '../services/auth';
 
 /**
  * Extended Request interface with user property
@@ -37,7 +37,7 @@ export const authMiddleware = async (req: AuthenticatedRequest, res: Response, n
     if (!authHeader) {
       if (process.env.NODE_ENV !== 'production') {
         console.log('Auth middleware: No authorization header, using default user (development only)');
-        req.user = getAuthService().getDefaultUser();
+        req.user = authService.getDefaultUser();
         return next();
       }
       return res.status(401).json({ error: 'No authorization header provided' });
@@ -50,7 +50,7 @@ export const authMiddleware = async (req: AuthenticatedRequest, res: Response, n
     }
     
     // Validate token
-    const user = await getAuthService().validateToken(token);
+    const user = await authService.validateToken(token);
     
     if (!user) {
       return res.status(401).json({ error: 'Invalid token' });
@@ -92,7 +92,7 @@ export const optionalAuthMiddleware = async (req: AuthenticatedRequest, res: Res
     }
     
     // Validate token
-    const user = await getAuthService().validateToken(token);
+    const user = await authService.validateToken(token);
     
     // Attach user to request if valid
     if (user) {

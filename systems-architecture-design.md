@@ -91,17 +91,19 @@ graph TD
 - **Redis**: Cache and job queue storage
 - **WebSocket**: Real-time communication server
 - **Database**: Data persistence layer
+- **SheetDataService**: Service for managing sheet data and periodic refreshes
+- **AuthService**: Authentication service for user management
 
 #### API Routes Structure
 
 ```mermaid
 graph TD
     subgraph "API Routes"
-        API[API Router] --> Messages[/api/messages]
-        API --> Sessions[/api/sessions]
-        API --> Smartsheet[/api/smartsheet]
-        API --> Jobs[/api/jobs]
-        API --> Webhooks[/api/webhooks]
+        API[API Router] --> Messages["/api/messages"]
+        API --> Sessions["/api/sessions"]
+        API --> Smartsheet["/api/smartsheet"]
+        API --> Jobs["/api/jobs"]
+        API --> Webhooks["/api/webhooks"]
     end
 ```
 
@@ -227,9 +229,19 @@ The application uses PostgreSQL with Drizzle ORM for data persistence. The datab
 
 ```mermaid
 erDiagram
+    users {
+        string id PK
+        string email UK
+        string name
+        timestamp created_at
+        timestamp updated_at
+    }
+
     chat_sessions {
         string id PK
+        string user_id FK
         string sheet_id
+        jsonb metadata
         timestamp created_at
         timestamp updated_at
     }
@@ -255,6 +267,7 @@ erDiagram
         timestamp updated_at
     }
 
+    users ||--o{ chat_sessions : owns
     chat_sessions ||--o{ messages : contains
 ```
 
@@ -267,7 +280,9 @@ Stores information about user chat sessions and their associated Smartsheet.
 | Column     | Type      | Constraints             | Description                                       |
 | ---------- | --------- | ----------------------- | ------------------------------------------------- |
 | id         | text      | PRIMARY KEY             | Unique identifier for the session (UUID)          |
+| user_id    | text      | FOREIGN KEY, NOT NULL   | Reference to the user who owns this session       |
 | sheet_id   | text      | NOT NULL                | ID of the Smartsheet associated with this session |
+| metadata   | jsonb     | NULL                    | Additional metadata about the session             |
 | created_at | timestamp | NOT NULL, DEFAULT now() | When the session was created                      |
 | updated_at | timestamp | NOT NULL, DEFAULT now() | When the session was last updated                 |
 
@@ -300,6 +315,18 @@ Stores information about background processing jobs.
 | created_at | timestamp | NOT NULL, DEFAULT now() | When the job was created                                          |
 | updated_at | timestamp | NOT NULL, DEFAULT now() | When the job was last updated                                     |
 
+#### 6.2.4 users
+
+Stores information about users of the application.
+
+| Column     | Type      | Constraints             | Description                            |
+| ---------- | --------- | ----------------------- | -------------------------------------- |
+| id         | text      | PRIMARY KEY             | Unique identifier for the user (UUID)  |
+| email      | text      | NOT NULL, UNIQUE        | User's email address                   |
+| name       | text      | NULL                    | User's display name                    |
+| created_at | timestamp | NOT NULL, DEFAULT now() | When the user account was created      |
+| updated_at | timestamp | NOT NULL, DEFAULT now() | When the user account was last updated |
+
 ### 6.3 Data Types and Structures
 
 #### 6.3.1 Message Types
@@ -329,7 +356,31 @@ The `metadata` field in the messages table is a JSONB object that can contain:
 }
 ```
 
-#### 6.3.3 Job Status Values
+#### 6.3.3 Session Metadata
+
+The `metadata` field in the chat_sessions table is a JSONB object that can contain:
+
+```typescript
+{
+  sheetData: {
+    columns: Array<{
+      id: string; // Column ID
+      title: string; // Column title
+      type: string; // Column type
+      isEditable: boolean; // Whether the column is editable
+      options?: string[]; // Options for picklist columns
+      description?: string; // Column description
+      systemColumn?: boolean; // Whether this is a system column
+    }>;
+    sampleData: Array<Record<string, any>>; // Sample data from the first few rows
+    sheetName: string; // Name of the sheet
+    totalRows: number; // Total number of rows in the sheet
+    lastUpdated: string; // ISO timestamp of when the data was last updated
+  }
+}
+```
+
+#### 6.3.4 Job Status Values
 
 Jobs can have the following status values:
 
@@ -370,10 +421,13 @@ For bulk update jobs:
 
 ### 6.5 Data Flow and Persistence
 
-1. When a user starts a new chat, a new record is created in the `chat_sessions` table
-2. Each message exchanged is stored in the `messages` table with a reference to its session
-3. Long-running operations create entries in the `jobs` table for tracking progress
-4. Session data is persisted across user sessions, allowing conversation history to be maintained
+1. When a user logs in, their information is stored in the `users` table (or a default user is used in development)
+2. When a user starts a new chat, a new record is created in the `chat_sessions` table with a reference to the user
+3. Sheet data is automatically loaded and stored in the session's metadata for context
+4. Each message exchanged is stored in the `messages` table with a reference to its session
+5. Long-running operations create entries in the `jobs` table for tracking progress
+6. Session data is persisted across user sessions, allowing conversation history to be maintained
+7. Sheet data is periodically refreshed to ensure the AI has access to current information
 
 ## 7. API Endpoints
 
@@ -425,25 +479,57 @@ For bulk update jobs:
 
 ## 8. Authentication and Security
 
-### 8.1 Authentication Flow
+### 8.1 Authentication Infrastructure
+
+The application implements a flexible authentication infrastructure that supports both development mode with a default user and production mode with AWS Cognito integration.
+
+```mermaid
+graph TD
+    subgraph "Authentication System"
+        Auth[Authentication Request] --> AuthMiddleware[Auth Middleware]
+        AuthMiddleware --> DevMode{Dev Mode?}
+        DevMode -->|Yes| DefaultUser[Use Default User]
+        DevMode -->|No| TokenValidation[Validate JWT Token]
+        TokenValidation --> Valid{Valid?}
+        Valid -->|Yes| UserInfo[Extract User Info]
+        Valid -->|No| AuthError[Authentication Error]
+        DefaultUser --> SetUser[Set User Context]
+        UserInfo --> SetUser
+        SetUser --> NextMiddleware[Next Middleware]
+        AuthError --> ErrorResponse[Error Response]
+    end
+```
+
+#### Authentication Components
+
+- **AuthService**: Interface for authentication operations with implementations for development and production
+- **AuthMiddleware**: Express middleware that validates authentication tokens
+- **Default User**: Predefined user for development environments
+- **JWT Validation**: Token validation for production environments (AWS Cognito)
+
+### 8.2 Authentication Flow
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Frontend
     participant Backend
+    participant AuthService
     participant Smartsheet
 
-    User->>Frontend: Enter Smartsheet Token
-    Frontend->>Backend: Store Token
-    Backend->>Smartsheet: Verify Token
-    Smartsheet-->>Backend: Token Valid
-    Backend-->>Frontend: Authentication Success
+    User->>Frontend: Login Request
+    Frontend->>Backend: Authentication Request
+    Backend->>AuthService: Validate Credentials
+    AuthService-->>Backend: User Information
+    Backend->>Smartsheet: Verify Smartsheet Access
+    Smartsheet-->>Backend: Access Confirmed
+    Backend-->>Frontend: Authentication Success + User Info
     Frontend-->>User: Access Granted
 ```
 
-### 8.2 Security Measures
+### 8.3 Security Measures
 
+- **User Authentication**: Secure user authentication with JWT tokens
 - **API Token Storage**: Secure storage of Smartsheet API tokens
 - **HTTPS**: Encrypted communication between client and server
 - **Input Validation**: Comprehensive validation of all user inputs
@@ -478,6 +564,32 @@ graph TD
         Events --> SystemEvents[System Events]
     end
 ```
+
+### 9.3 Sheet Data Service
+
+The SheetDataService manages sheet data loading and periodic refreshes to ensure the AI has access to current information.
+
+```mermaid
+graph TD
+    subgraph "Sheet Data Service"
+        SDS[SheetDataService] --> Load[Load Sheet Data]
+        SDS --> Refresh[Periodic Refresh]
+        SDS --> Store[Store in Session Metadata]
+        Load --> SS[Smartsheet API]
+        Refresh --> SS
+        SS --> Parse[Parse Response]
+        Parse --> Store
+        Store --> DB[(Database)]
+    end
+```
+
+#### Key Features
+
+- **Automatic Data Loading**: Loads sheet data when a session is created
+- **Periodic Refreshes**: Refreshes sheet data at configurable intervals
+- **Metadata Storage**: Stores sheet structure and sample data in session metadata
+- **Error Handling**: Graceful handling of API errors and access issues
+- **Resource Management**: Proper cleanup of refresh intervals on server shutdown
 
 ## 10. Job Processing System
 
@@ -727,6 +839,8 @@ The application uses environment variables for configuration, following the 12-f
 | `AZURE_OPENAI_MODEL`        | Azure OpenAI model          | Yes      | -                  | Model name for Azure OpenAI                        |
 | `SMARTSHEET_ACCESS_TOKEN`   | Smartsheet authentication   | Yes      | -                  | API token for Smartsheet access                    |
 | `SMARTSHEET_WEBHOOK_SECRET` | Smartsheet webhook security | No       | -                  | Secret for validating Smartsheet webhook calls     |
+| `SHEET_REFRESH_INTERVAL`    | Sheet data refresh          | No       | 300000             | Interval (ms) for refreshing sheet data            |
+| `SHEET_SAMPLE_SIZE`         | Sheet data sampling         | No       | 5                  | Number of rows to include in sample data           |
 
 #### 16.1.2 Client Environment Variables
 
@@ -810,5 +924,15 @@ The design emphasizes:
 4. **Real-time Updates**: WebSocket-based communication for immediate feedback
 5. **Security**: Proper authentication and data protection measures
 6. **Configuration**: Environment-based configuration for flexibility and security
+7. **Context Awareness**: Proactive sheet data loading and intelligent context management
+8. **User Experience**: Enhanced AI understanding of user intent and sheet data
+
+Recent enhancements to the architecture include:
+
+1. **Enhanced Authentication**: Support for both development mode with default users and production mode with JWT authentication
+2. **Sheet Data Service**: Automatic loading and periodic refreshing of sheet data
+3. **Session Metadata**: Storage of sheet structure and sample data in session metadata
+4. **Improved System Prompt**: Detailed context for the LLM about sheet structure and available operations
+5. **Proactive Data Loading**: Automatic loading of sheet data when a session is created
 
 This architecture supports the functional requirements outlined in the functional specification while providing a technical foundation that can be extended in future releases.

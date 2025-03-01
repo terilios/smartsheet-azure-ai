@@ -128,12 +128,52 @@ router.get("/verify/:sheetId", async (req, res) => {
 router.get("/:sheetId", async (req, res) => {
   try {
     const sheetId = req.params.sheetId;
+    const sessionId = req.query.sessionId as string | undefined;
+    
+    console.log(`Fetching sheet data for sheet ID: ${sheetId}, session ID: ${sessionId}`);
     
     if (!sheetId) {
       return res.status(400).json({
         success: false,
         error: "Sheet ID is required"
       });
+    }
+
+    // Validate session if provided
+    if (sessionId) {
+      try {
+        // Import storage dynamically to avoid circular dependencies
+        const { storage } = await import("../storage");
+        const session = await storage.getSession(sessionId);
+        
+        if (!session) {
+          console.warn(`Session not found: ${sessionId}`);
+          // Continue without session validation in development
+          if (process.env.NODE_ENV === 'production') {
+            return res.status(404).json({
+              success: false,
+              error: "Session not found",
+              code: "SESSION_NOT_FOUND"
+            });
+          }
+        } else {
+          console.log(`Session found: ${sessionId}, state: ${session.state}`);
+          // Update session state if needed
+          if (session.state === "INITIALIZING") {
+            await storage.updateSessionState(sessionId, "ACTIVE");
+          }
+        }
+      } catch (sessionError) {
+        console.error("Error validating session:", sessionError);
+        // Continue without session validation in development
+        if (process.env.NODE_ENV === 'production') {
+          return res.status(500).json({
+            success: false,
+            error: "Error validating session",
+            code: "SESSION_VALIDATION_ERROR"
+          });
+        }
+      }
     }
 
     // Use the environment variable for access token

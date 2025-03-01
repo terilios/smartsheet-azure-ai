@@ -1,160 +1,85 @@
-import { type Message, type ChatSession } from "../shared/schema";
+import { DEFAULT_USER_ID } from "../migrations/0001_add_users";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "./db";
-import { eq } from "drizzle-orm";
-import { messages } from "../migrations/0000_initial";
-import { updatedSessions as chatSessions } from "../migrations/0001_add_users";
+
+// In-memory storages for sessions and messages.
+// In a production environment, replace these with actual database operations.
+const sessions = new Map<string, any>();
+const messages = new Map<string, any[]>();
 
 export const storage = {
-  createSession: async (userId: string, sheetId: string): Promise<string> => {
+  /**
+   * Creates a new chat session.
+   * Uses the provided userId, or falls back to the DEFAULT_USER_ID if missing.
+   */
+  async createSession(userId: string, sheetId: string, state: string): Promise<string> {
+    // Ensure a valid user ID by falling back to the default user if necessary.
+    const validUserId = userId || DEFAULT_USER_ID;
     const sessionId = uuidv4();
-    await db.insert(chatSessions).values({
+    const session = {
       id: sessionId,
-      userId,
+      userId: validUserId,
       sheetId,
+      state,
       createdAt: new Date(),
-      updatedAt: new Date()
-    });
+      updatedAt: new Date(),
+      metadata: {}
+    };
+    sessions.set(sessionId, session);
+    // Initialize messages array for this session.
+    messages.set(sessionId, []);
     return sessionId;
   },
-
-  getSessionsByUser: async (userId: string): Promise<ChatSession[]> => {
-    const sessions = await db
-      .select()
-      .from(chatSessions)
-      .where(eq(chatSessions.userId, userId))
-      .orderBy(chatSessions.updatedAt);
-
-    return Promise.all(sessions.map(async (session) => {
-      const sessionMessages = await db
-        .select()
-        .from(messages)
-        .where(eq(messages.sessionId, session.id))
-        .orderBy(messages.timestamp);
-
-      return {
-        id: session.id,
-        userId: session.userId,
-        sheetId: session.sheetId,
-        createdAt: session.createdAt.toISOString(),
-        updatedAt: session.updatedAt.toISOString(),
-        messages: sessionMessages.map(msg => ({
-          role: msg.role as Message["role"],
-          content: msg.content,
-          timestamp: msg.timestamp.toISOString(),
-          metadata: msg.metadata as Message["metadata"]
-        }))
-      };
-    }));
+  /**
+   * Retrieves a session by its ID.
+   */
+  async getSession(sessionId: string) {
+    return sessions.get(sessionId);
   },
-
-  getSession: async (sessionId: string): Promise<ChatSession | null> => {
-    const [session] = await db
-      .select()
-      .from(chatSessions)
-      .where(eq(chatSessions.id, sessionId));
-
-    if (!session) return null;
-
-    const sessionMessages = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.sessionId, sessionId))
-      .orderBy(messages.timestamp);
-
-    return {
-      id: session.id,
-      userId: session.userId,
-      sheetId: session.sheetId,
-      createdAt: session.createdAt.toISOString(),
-      updatedAt: session.updatedAt.toISOString(),
-      messages: sessionMessages.map(msg => ({
-        role: msg.role as Message["role"],
-        content: msg.content,
-        timestamp: msg.timestamp.toISOString(),
-        metadata: msg.metadata as Message["metadata"]
-      }))
-    };
-  },
-
-  addMessage: async (sessionId: string, message: Message): Promise<void> => {
-    const [session] = await db
-      .select()
-      .from(chatSessions)
-      .where(eq(chatSessions.id, sessionId));
-
-    if (!session) {
-      throw new Error("Chat session not found");
+  /**
+   * Updates the state of an existing session.
+   */
+  async updateSessionState(sessionId: string, state: string, errorMessage?: string): Promise<void> {
+    const session = sessions.get(sessionId);
+    if (session) {
+      session.state = state;
+      session.error = errorMessage || null;
+      session.updatedAt = new Date();
     }
-
-    // Get timestamp from metadata or create a new one
-    const timestamp = message.metadata?.timestamp
-      ? new Date(message.metadata.timestamp)
-      : new Date();
-
-    await db.insert(messages).values({
-      id: uuidv4(),
-      sessionId,
-      role: message.role || 'user',
-      content: message.content,
-      timestamp,
-      metadata: message.metadata || null
-    });
-
-    await db
-      .update(chatSessions)
-      .set({ updatedAt: new Date() })
-      .where(eq(chatSessions.id, sessionId));
   },
-
-  getMessages: async (sessionId: string): Promise<Message[]> => {
-    const [session] = await db
-      .select()
-      .from(chatSessions)
-      .where(eq(chatSessions.id, sessionId));
-
-    if (!session) {
-      throw new Error("Chat session not found");
+  /**
+   * Retrieves all sessions for a given user.
+   */
+  async getSessionsByUser(userId: string) {
+    return Array.from(sessions.values()).filter(session => session.userId === userId);
+  },
+  /**
+   * Retrieves all messages for the given session.
+   */
+  async getMessages(sessionId: string): Promise<any[]> {
+    return messages.get(sessionId) || [];
+  },
+  /**
+   * Adds a message to the given session.
+   */
+  async addMessage(sessionId: string, message: any): Promise<void> {
+    const msgArr = messages.get(sessionId) || [];
+    msgArr.push(message);
+    messages.set(sessionId, msgArr);
+  },
+  /**
+   * Updates session metadata by merging existing metadata with new entries.
+   */
+  async updateSessionMetadata(sessionId: string, metadata: any): Promise<void> {
+    const session = sessions.get(sessionId);
+    if (session) {
+      session.metadata = { ...session.metadata, ...metadata };
+      session.updatedAt = new Date();
     }
-
-    const sessionMessages = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.sessionId, sessionId))
-      .orderBy(messages.timestamp);
-
-    return sessionMessages.map(msg => ({
-      role: msg.role as Message["role"],
-      content: msg.content,
-      timestamp: msg.timestamp.toISOString(),
-      metadata: msg.metadata as Message["metadata"]
-    }));
   },
-
-  clearMessages: async (sessionId: string): Promise<void> => {
-    const [session] = await db
-      .select()
-      .from(chatSessions)
-      .where(eq(chatSessions.id, sessionId));
-
-    if (!session) {
-      throw new Error("Chat session not found");
-    }
-
-    await db
-      .delete(messages)
-      .where(eq(messages.sessionId, sessionId));
-
-    await db
-      .update(chatSessions)
-      .set({ updatedAt: new Date() })
-      .where(eq(chatSessions.id, sessionId));
-  },
-
-  deleteSession: async (sessionId: string): Promise<void> => {
-    // Messages will be automatically deleted due to ON DELETE CASCADE
-    await db
-      .delete(chatSessions)
-      .where(eq(chatSessions.id, sessionId));
+  /**
+   * Clears all messages for the given session.
+   */
+  async clearMessages(sessionId: string): Promise<void> {
+    messages.set(sessionId, []);
   }
 };

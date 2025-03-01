@@ -145,9 +145,11 @@ export function SmartsheetProvider({ children }: { children: ReactNode }) {
   // Fetch sheet data when sheetId changes
   useEffect(() => {
     if (currentSheetId && currentSessionId) {
+      console.log("Refreshing sheet data for session:", currentSessionId, "sheet:", currentSheetId);
       refreshSheetData();
     } else {
       // Clear sheet data if no sheet ID or session ID
+      console.log("Clearing sheet data - no sheet ID or session ID");
       setSheetData(null);
       setError(null);
     }
@@ -182,8 +184,10 @@ export function SmartsheetProvider({ children }: { children: ReactNode }) {
     setError(null);
     
     try {
-      console.log(`Fetching sheet data for sheet ID: ${currentSheetId}`);
-      const res = await apiRequest("GET", `/api/smartsheet/${currentSheetId}`);
+      console.log(`Fetching sheet data for sheet ID: ${currentSheetId}, session ID: ${currentSessionId}`);
+      
+      // Include session ID in the request
+      const res = await apiRequest("GET", `/api/smartsheet/${currentSheetId}?sessionId=${currentSessionId}`);
       
       if (!res.ok) {
         const errorData = await res.json();

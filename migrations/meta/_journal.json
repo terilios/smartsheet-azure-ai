@@ -15,6 +15,20 @@
       "when": 1740531200000,
       "tag": "0001_add_users",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1740617600000,
+      "tag": "0002_add_session_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1740704000000,
+      "tag": "0003_add_session_state",
+      "breakpoints": true
     }
   ]
 }

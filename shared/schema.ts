@@ -9,14 +9,27 @@ export const userSchema = z.object({
 
 export type User = z.infer<typeof userSchema>;
 
+// Session State
+export const sessionStateSchema = z.enum([
+  "INITIALIZING",
+  "ACTIVE",
+  "ERROR",
+  "CLOSED"
+]);
+
+export type SessionState = z.infer<typeof sessionStateSchema>;
+
 // Chat Session
 export const chatSessionSchema = z.object({
   id: z.string(),
   userId: z.string(),
   sheetId: z.string(),
+  state: sessionStateSchema.default("INITIALIZING"),
+  error: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   messages: z.array(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 
 export type ChatSession = z.infer<typeof chatSessionSchema>;

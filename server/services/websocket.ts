@@ -1,7 +1,8 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { Server } from "http";
 import { z } from "zod";
-import { subscribeToSheet } from "../routes/webhooks.js";
+// Import the serverEventBus instead of the removed subscribeToSheet function
+import { serverEventBus, ServerEventType } from "./events.js";
 
 // Enhanced message schemas
 const subscribeMessageSchema = z.object({
@@ -140,7 +141,13 @@ export class WebSocketService {
       (ws as any).subscribedSheets = (ws as any).subscribedSheets || [];
       (ws as any).subscribedSheets.push(message.sheetId);
       
-      subscribeToSheet(message.sheetId, ws);
+      // Publish subscription event instead of using subscribeToSheet
+      serverEventBus.publish(ServerEventType.WS_CLIENT_SUBSCRIBED, {
+        sheetId: message.sheetId,
+        clientId: (ws as any).id || 'unknown',
+        timestamp: new Date().toISOString()
+      });
+      
       ws.send(JSON.stringify({
         type: "subscribed",
         sheetId: message.sheetId

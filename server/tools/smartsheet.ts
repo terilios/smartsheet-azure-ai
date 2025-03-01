@@ -2,6 +2,7 @@ import { type ColumnType } from "@shared/schema";
 import { columnTypeMapping } from "@shared/schema";
 import { WebSocketService } from "../services/websocket.js";
 import { withRetry } from '../utils/retry';
+import { serverEventBus, ServerEventType } from "../services/events.js";
 
 // Filter criteria for row filtering
 export interface FilterCriteria {
@@ -21,8 +22,43 @@ let accessToken: string | null = null;
 let client: any = null;
 
 function setAccessToken(token: string): void {
+  if (!token) {
+    console.error('Attempted to set empty Smartsheet access token');
+    throw new Error('Smartsheet access token cannot be empty');
+  }
+  
+  console.log(`Setting Smartsheet access token: ${token.substring(0, 5)}...${token.substring(token.length - 5)}`);
   accessToken = token;
   client = null; // Reset client so it will be recreated with new token
+  
+  // Verify the token immediately
+  verifyToken().catch(error => {
+    console.error('Error verifying Smartsheet access token:', error);
+    // Don't throw here, just log the error
+  });
+}
+
+async function verifyToken(): Promise<boolean> {
+  try {
+    const client = await ensureClient();
+    // Try a simple API call to verify the token
+    await client.users.getCurrentUser();
+    
+    serverEventBus.publish(ServerEventType.SMARTSHEET_TOKEN_VERIFIED, {
+      message: 'Successfully verified Smartsheet access token',
+      timestamp: new Date().toISOString()
+    });
+    
+    return true;
+  } catch (error) {
+    serverEventBus.publish(ServerEventType.SMARTSHEET_TOKEN_INVALID, {
+      message: 'Failed to verify Smartsheet access token',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
+    });
+    
+    return false;
+  }
 }
 
 async function ensureClient(): Promise<any> {
@@ -242,14 +278,18 @@ async function getSheetInfo(params: SheetInfoRequest) {
  * @returns A promise that resolves to true if the sheet is accessible, false otherwise
  */
 async function verifySheetAccess(sheetId: string): Promise<boolean> {
-  console.log(`Verifying access to sheet ${sheetId}...`);
+  serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+    message: `Verifying access to sheet ${sheetId}...`,
+    timestamp: new Date().toISOString()
+  });
   
   if (!accessToken) {
-    console.error('No access token set for Smartsheet API');
+    serverEventBus.publish(ServerEventType.SMARTSHEET_ERROR, {
+      message: 'No access token set for Smartsheet API',
+      timestamp: new Date().toISOString()
+    });
     return false;
   }
-  
-  console.log(`Using access token: ${accessToken.substring(0, 5)}...${accessToken.substring(accessToken.length - 5)}`);
   
   try {
     // Use a direct approach with better error handling
@@ -266,49 +306,57 @@ async function verifySheetAccess(sheetId: string): Promise<boolean> {
       });
       
       if (response && response.name) {
-        console.log(`Successfully accessed sheet: ${response.name}`);
-        console.log(`Sheet access verification result: Success`);
+        serverEventBus.publish(ServerEventType.SMARTSHEET_SHEET_ACCESS_GRANTED, {
+          message: `Successfully accessed sheet: ${response.name}`,
+          sheetId,
+          sheetName: response.name,
+          timestamp: new Date().toISOString()
+        });
         return true;
       } else {
-        console.error('Sheet access verification failed: Invalid response format');
-        console.log(`Sheet access verification result: Failed (invalid response)`);
+        serverEventBus.publish(ServerEventType.SMARTSHEET_SHEET_ACCESS_DENIED, {
+          message: 'Sheet access verification failed: Invalid response format',
+          sheetId,
+          reason: 'invalid_response',
+          timestamp: new Date().toISOString()
+        });
         return false;
       }
     } catch (apiError: any) {
-      // Handle specific API errors
+      let reason = 'unknown';
+      let message = `API error verifying access to sheet ${sheetId}`;
+      
       if (apiError.statusCode === 404) {
-        console.error(`Sheet not found: ${sheetId}`);
-        console.log(`Sheet access verification result: Failed (not found)`);
-        return false;
+        reason = 'not_found';
+        message = `Sheet not found: ${sheetId}`;
       } else if (apiError.statusCode === 403) {
-        console.error(`Permission denied for sheet: ${sheetId}`);
-        console.log(`Sheet access verification result: Failed (permission denied)`);
-        return false;
+        reason = 'permission_denied';
+        message = `Permission denied for sheet: ${sheetId}`;
       } else if (apiError.statusCode === 401) {
-        console.error(`Authentication failed for sheet: ${sheetId}`);
-        console.log(`Sheet access verification result: Failed (authentication)`);
-        return false;
-      } else {
-        // Log detailed error information
-        console.error(`API error verifying access to sheet ${sheetId}:`, apiError);
-        console.log(`Sheet access verification result: Failed (API error)`);
-        return false;
+        reason = 'authentication_failed';
+        message = `Authentication failed for sheet: ${sheetId}`;
       }
+      
+      serverEventBus.publish(ServerEventType.SMARTSHEET_SHEET_ACCESS_DENIED, {
+        message,
+        sheetId,
+        reason,
+        error: apiError instanceof Error ? apiError.message : 'Unknown error',
+        statusCode: apiError.statusCode,
+        timestamp: new Date().toISOString()
+      });
+      
+      return false;
     }
   } catch (error: any) {
-    // Handle unexpected errors
-    console.error(`Unexpected error verifying access to sheet ${sheetId}:`, error);
+    serverEventBus.publish(ServerEventType.SMARTSHEET_ERROR, {
+      message: `Unexpected error verifying access to sheet ${sheetId}`,
+      sheetId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      statusCode: error.statusCode,
+      timestamp: new Date().toISOString()
+    });
     
-    // Log more details about the error
-    if (error.statusCode) {
-      console.error(`Status code: ${error.statusCode}`);
-    }
-    
-    if (error.message) {
-      console.error(`Error message: ${error.message}`);
-    }
-    
-    console.log(`Sheet access verification result: Failed (unexpected error)`);
     return false;
   }
 }

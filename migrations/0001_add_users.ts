@@ -1,5 +1,6 @@
-import { pgTable, text, timestamp, index } from "drizzle-orm/pg-core";
-import { sessions } from "./0000_initial";
+import { pgTable, text, timestamp, index } from 'drizzle-orm/pg-core';
+
+export const DEFAULT_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Users table for storing user information
@@ -30,9 +31,3 @@ export const updatedSessions = pgTable("chat_sessions", {
     userIdIdx: index("idx_chat_sessions_user_id").on(table.userId)
   };
 });
-
-/**
- * Default user ID constant
- * This UUID is used for the default user in development environments
- */
-export const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000';

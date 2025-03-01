@@ -2,6 +2,8 @@ import { useEffect, useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "./use-toast";
 import { useSmartsheet } from "@/lib/smartsheet-context";
+import { EventType, eventBus } from "@/lib/events";
+import { useSessionValidator } from "@/lib/session-validator";
 
 // Enhanced sheet update interface
 interface SheetUpdate {
@@ -20,20 +22,6 @@ interface SheetUpdate {
   };
 }
 
-// Create a custom event system for sheet operations
-export const sheetEvents = {
-  emit: (eventName: string, data: any) => {
-    const event = new CustomEvent(eventName, { detail: data });
-    document.dispatchEvent(event);
-  },
-  
-  on: (eventName: string, callback: (data: any) => void) => {
-    const handler = (e: CustomEvent) => callback(e.detail);
-    document.addEventListener(eventName, handler as EventListener);
-    return () => document.removeEventListener(eventName, handler as EventListener);
-  }
-};
-
 export interface UpdateEvent {
   type: string;
   target: "sheet" | "row" | "column" | "cell";
@@ -46,12 +34,14 @@ export interface UpdateEvent {
 export function useSheetUpdates() {
   const {
     currentSheetId,
+    currentSessionId,
     refreshSheetData,
     refreshRowData,
     refreshCellData,
     invalidateCache
   } = useSmartsheet();
   
+  const { validateSession } = useSessionValidator();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -134,8 +124,8 @@ export function useSheetUpdates() {
     // Invalidate queries that depend on this sheet
     queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
     
-    // Emit event for other components
-    sheetEvents.emit('sheet:update', {
+    // Publish event using the new event system
+    eventBus.publish(EventType.SHEET_DATA_UPDATED, {
       sheetId: event.sheetId,
       updateType: event.target || event.change?.type || 'sheet',
       action: event.change?.action || 'updated',
@@ -152,6 +142,13 @@ export function useSheetUpdates() {
   // Enhanced WebSocket connection with better error handling and reconnection logic
   useEffect(() => {
     if (!currentSheetId) return;
+
+    // Validate session before connecting
+    if (currentSessionId) {
+      validateSession().catch(error => {
+        console.error("Session validation error:", error);
+      });
+    }
 
     // Create WebSocket connection
     const wsUrl = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:3000`;
@@ -186,8 +183,17 @@ export function useSheetUpdates() {
           // Subscribe to sheet updates
           socket.send(JSON.stringify({
             type: "subscribe",
-            sheetId: currentSheetId
+            sheetId: currentSheetId,
+            sessionId: currentSessionId
           }));
+          
+          // Publish connection event
+          eventBus.publish(EventType.SESSION_UPDATED, {
+            status: 'connected',
+            sheetId: currentSheetId,
+            sessionId: currentSessionId,
+            timestamp: new Date().toISOString()
+          });
           
           // Send a ping every 30 seconds to keep the connection alive
           const pingInterval = setInterval(() => {
@@ -212,6 +218,14 @@ export function useSheetUpdates() {
               console.debug("Received pong from server");
             } else if (data.type === "error") {
               console.error("WebSocket error message:", data.error);
+              
+              // Publish error event
+              eventBus.publish(EventType.ERROR_OCCURRED, {
+                message: data.error,
+                source: 'WebSocket',
+                timestamp: new Date().toISOString()
+              });
+              
               toast({
                 title: "WebSocket Error",
                 description: data.error,
@@ -227,6 +241,14 @@ export function useSheetUpdates() {
           console.log(`WebSocket disconnected (code: ${event.code}, reason: ${event.reason}), attempting to reconnect...`);
           setIsConnected(false);
           
+          // Publish disconnection event
+          eventBus.publish(EventType.SESSION_UPDATED, {
+            status: 'disconnected',
+            sheetId: currentSheetId,
+            sessionId: currentSessionId,
+            timestamp: new Date().toISOString()
+          });
+          
           // Implement exponential backoff for reconnection
           if (reconnectAttempts < maxReconnectAttempts) {
             const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), 30000); // Max 30 seconds
@@ -237,6 +259,14 @@ export function useSheetUpdates() {
             }, delay);
           } else {
             console.error(`Failed to reconnect after ${maxReconnectAttempts} attempts`);
+            
+            // Publish error event
+            eventBus.publish(EventType.ERROR_OCCURRED, {
+              message: `Failed to reconnect after ${maxReconnectAttempts} attempts`,
+              source: 'WebSocket',
+              timestamp: new Date().toISOString()
+            });
+            
             toast({
               title: "Connection Error",
               description: "Failed to reconnect to the server. Please refresh the page.",
@@ -248,10 +278,24 @@ export function useSheetUpdates() {
         socket.addEventListener("error", (error) => {
           console.error("WebSocket error:", error);
           setIsConnected(false);
+          
+          // Publish error event
+          eventBus.publish(EventType.ERROR_OCCURRED, {
+            message: "WebSocket connection error",
+            source: 'WebSocket',
+            timestamp: new Date().toISOString()
+          });
         });
       } catch (error) {
         console.error("Error creating WebSocket connection:", error);
         setIsConnected(false);
+        
+        // Publish error event
+        eventBus.publish(EventType.ERROR_OCCURRED, {
+          message: error instanceof Error ? error.message : "Unknown WebSocket connection error",
+          source: 'WebSocket',
+          timestamp: new Date().toISOString()
+        });
         
         // Try to reconnect after a delay
         reconnectTimeout = setTimeout(() => {
@@ -263,9 +307,9 @@ export function useSheetUpdates() {
 
     connect();
 
-    // Listen for sheet update events from other components
-    const unsubscribe = sheetEvents.on('sheet:update:request', (data) => {
-      if (data.sheetId === currentSheetId) {
+    // Listen for sheet update events from the event bus
+    const unsubscribe = eventBus.subscribe(EventType.SHEET_DATA_UPDATED, (payload) => {
+      if (payload.data.sheetId === currentSheetId) {
         refreshSheetData();
       }
     });
@@ -278,7 +322,7 @@ export function useSheetUpdates() {
       }
       unsubscribe();
     };
-  }, [currentSheetId, handleUpdate, toast, refreshSheetData]);
+  }, [currentSheetId, currentSessionId, handleUpdate, toast, refreshSheetData, validateSession]);
   
   return {
     lastUpdate,
@@ -286,10 +330,11 @@ export function useSheetUpdates() {
     refreshSheet: refreshSheetData,
     updateEvent,
     triggerUpdate: useCallback((type: string, targetId?: string) => {
-      sheetEvents.emit('sheet:update:request', {
+      eventBus.publish(EventType.SHEET_DATA_UPDATED, {
         sheetId: currentSheetId,
         type,
-        targetId
+        targetId,
+        timestamp: new Date().toISOString()
       });
     }, [currentSheetId])
   };

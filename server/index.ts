@@ -12,7 +12,10 @@ import sessionsRouter from './routes/sessions.js';
 import smartsheetRouter from './routes/smartsheet.js';
 import messagesRouter from './routes/messages.js';
 import { jobQueue } from './jobs/queue.js';
+// Use the original WebSocket service for now until we fully migrate to the new one
 import { WebSocketService } from './services/websocket.js';
+import { serverEventBus, ServerEventType } from './services/events.js';
+import { sheetDataService } from './services/sheet-data.js';
 import bodyParser from 'body-parser';
 import { checkDatabaseConnection, pool } from './db';
 
@@ -27,6 +30,28 @@ if (!process.env.SMARTSHEET_WEBHOOK_SECRET) {
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable must be set');
+}
+
+// Initialize Smartsheet client
+import { setAccessToken } from './tools/smartsheet.js';
+serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+  message: 'Initializing Smartsheet client...',
+  timestamp: new Date().toISOString()
+});
+
+try {
+  setAccessToken(process.env.SMARTSHEET_ACCESS_TOKEN);
+  serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+    message: 'Smartsheet client initialized successfully',
+    timestamp: new Date().toISOString()
+  });
+} catch (error) {
+  serverEventBus.publish(ServerEventType.SYSTEM_ERROR, {
+    message: 'Failed to initialize Smartsheet client',
+    error: error instanceof Error ? error.message : 'Unknown error',
+    timestamp: new Date().toISOString()
+  });
+  throw error;
 }
 
 // Check database connection and run migrations
@@ -49,8 +74,29 @@ try {
 const app = express();
 const server = http.createServer(app);
 
+// Initialize event system
+serverEventBus.setDebug(process.env.NODE_ENV === 'development');
+serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+  message: 'Server starting up',
+  timestamp: new Date().toISOString()
+});
+
+// Set up event logging
+serverEventBus.subscribeToAll((event) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[EVENT] ${event.type}`, {
+      timestamp: new Date(event.timestamp).toISOString(),
+      source: event.source || 'unknown'
+    });
+  }
+});
+
 // Initialize WebSocket service
 const wsService = WebSocketService.initialize(server);
+serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+  message: 'WebSocket service initialized',
+  timestamp: new Date().toISOString()
+});
 
 // Enable CORS for development
 app.use(cors({
@@ -111,28 +157,52 @@ setInterval(() => {
 
 // Handle server shutdown
 const cleanup = async () => {
-  console.log('Shutting down server...');
+  serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+    message: 'Server shutting down',
+    timestamp: new Date().toISOString()
+  });
   
   // Close HTTP server
   await new Promise<void>((resolve) => {
     server.close(() => {
-      console.log('HTTP server closed');
+      serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+        message: 'HTTP server closed',
+        timestamp: new Date().toISOString()
+      });
       resolve();
     });
   });
   
   // Close WebSocket server
   await wsService.close();
+  serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+    message: 'WebSocket server closed',
+    timestamp: new Date().toISOString()
+  });
+  
+  // Stop all sheet data refreshes
+  sheetDataService.stopAllRefreshes();
+  serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+    message: 'Sheet data refreshes stopped',
+    timestamp: new Date().toISOString()
+  });
   
   // Close database connection
   try {
     await pool.end();
-    console.log('Database connection closed');
+    serverEventBus.publish(ServerEventType.SYSTEM_INFO, {
+      message: 'Database connection closed',
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
-    console.error('Error closing database connection:', error);
+    serverEventBus.publish(ServerEventType.SYSTEM_ERROR, {
+      message: 'Error closing database connection',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
+    });
   }
   
-  // Allow time for final cleanup
+  // Allow time for final cleanup and event processing
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   process.exit(0);

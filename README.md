@@ -26,6 +26,10 @@ AZURE_OPENAI_API_VERSION=2025-01-01-preview
 AZURE_OPENAI_DEPLOYMENT=your_deployment_name
 AZURE_OPENAI_MODEL=your_model_name
 
+# LiteLLM Proxy Configuration (Recommended for production)
+LITELLM_API_BASE=http://localhost:8000
+LITELLM_MODEL=gpt-4
+
 # Smartsheet Configuration
 SMARTSHEET_ACCESS_TOKEN=your_smartsheet_access_token
 SMARTSHEET_WEBHOOK_SECRET=your_webhook_secret
@@ -254,3 +258,76 @@ If you encounter issues with the Smartsheet API:
    - If you encounter persistent rate limiting, reduce the frequency of requests
 
 For more information about the Smartsheet API, refer to the [Smartsheet API Documentation](https://smartsheet.redoc.ly/).
+
+## Azure OpenAI Integration
+
+The application uses Azure OpenAI for natural language processing. There are two ways to connect to Azure OpenAI:
+
+1. **Direct Connection** (Development only): Connect directly to Azure OpenAI API
+2. **LiteLLM Proxy** (Recommended for production): Use a proxy server that handles connections to Azure OpenAI
+
+### Option 1: Direct Connection
+
+Configure your `server/.env` file with Azure OpenAI settings:
+
+```env
+# Azure OpenAI Configuration
+AZURE_OPENAI_API_BASE=your_azure_openai_base_url
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+AZURE_OPENAI_API_VERSION=2025-01-01-preview
+AZURE_OPENAI_DEPLOYMENT=your_deployment_name
+AZURE_OPENAI_MODEL=your_model_name
+```
+
+### Option 2: LiteLLM Proxy (Recommended for Production)
+
+This approach is recommended for production environments, especially when Azure OpenAI is configured to use private endpoints.
+
+1. Install LiteLLM:
+
+```bash
+pip install litellm
+```
+
+2. Configure your `server/.env` file:
+
+```env
+# LiteLLM Proxy Configuration
+LITELLM_API_BASE=http://localhost:8000
+LITELLM_MODEL=gpt-4
+```
+
+3. Start the LiteLLM proxy:
+
+```bash
+npm run start:litellm
+```
+
+4. Test the connectivity:
+
+```bash
+npm run test:litellm
+```
+
+For detailed setup instructions and troubleshooting, see [LiteLLM Setup Guide](docs/litellm-setup.md).
+
+### Troubleshooting Azure OpenAI Issues
+
+If you encounter issues with Azure OpenAI:
+
+1. **Authentication Issues**:
+
+   - Verify your API key is valid
+   - Check if the API key has expired
+   - Ensure the API key has access to the specified deployment
+
+2. **Private Endpoint Issues**:
+
+   - If using private endpoints, ensure you're running the application in a network that can access them
+   - Use the LiteLLM proxy approach for private endpoint access
+   - Run the connectivity test script to diagnose issues
+
+3. **Model Configuration Issues**:
+   - Verify that the deployment name is correct
+   - Check if the model exists in your Azure OpenAI resource
+   - Ensure the API version is compatible with your deployment

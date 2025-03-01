@@ -77,7 +77,8 @@ export default function SmartsheetContainer({ sheetId }: SmartsheetContainerProp
     error,
     refreshSheetData,
     lastUpdated,
-    setCurrentSheetId
+    setCurrentSheetId,
+    currentSessionId // Only session-related addition
   } = useSmartsheet();
 
   // Set the current sheet ID when the component mounts or sheetId changes
@@ -96,35 +97,40 @@ export default function SmartsheetContainer({ sheetId }: SmartsheetContainerProp
     }
   }, [configSaved]);
 
-  if (error?.code === "SMARTSHEET_NOT_CONFIGURED") {
-    return (
-      <ConfigurationError onConfigure={() => setIsConfigOpen(true)} />
-    );
+  // Early return to ensure hooks are called consistently when sheetData is null
+  if (!error && !isLoading && !sheetData) {
+    return <div className="h-full flex items-center justify-center">Loading sheet data...</div>;
   }
+
+  const content = error?.code === "SMARTSHEET_NOT_CONFIGURED"
+    ? <ConfigurationError onConfigure={() => setIsConfigOpen(true)} />
+    : (
+        <div className="h-full flex flex-col">
+          {sheetData && (
+            <Header
+              sheetName={sheetData.sheetName}
+              sheetId={sheetId}
+              columns={sheetData.columns}
+              onConfigureClick={() => setIsConfigOpen(true)}
+              onRefresh={refreshSheetData}
+              lastUpdated={lastUpdated}
+            />
+          )}
+          <div className="flex-1 overflow-auto">
+            <SheetViewer
+              data={sheetData || undefined}
+              isLoading={isLoading}
+              error={error}
+              onRetry={refreshSheetData}
+              sessionId={currentSessionId} // Pass the session ID to SheetViewer
+            />
+          </div>
+        </div>
+      );
 
   return (
     <>
-      <div className="h-full flex flex-col">
-        {!error && !isLoading && sheetData && (
-          <Header
-            sheetName={sheetData.sheetName}
-            sheetId={sheetId}
-            columns={sheetData.columns}
-            onConfigureClick={() => setIsConfigOpen(true)}
-            onRefresh={refreshSheetData}
-            lastUpdated={lastUpdated}
-          />
-        )}
-        <div className="flex-1 overflow-auto">
-          <SheetViewer
-            data={sheetData || undefined}
-            isLoading={isLoading}
-            error={error}
-            onRetry={refreshSheetData}
-          />
-        </div>
-      </div>
-      
+      {content}
       <Sheet open={isConfigOpen} onOpenChange={setIsConfigOpen}>
         <SheetContent className="sm:max-w-xl">
           <SheetHeader className="relative">

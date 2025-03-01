@@ -22,7 +22,14 @@
     "test:server": "jest --selectProjects server",
     "test:server:watch": "jest --selectProjects server --watch",
     "setup:test-db": "tsx scripts/setup-test-db.ts",
-    "cleanup:test-db": "tsx scripts/cleanup-test-db.ts"
+    "cleanup:test-db": "tsx scripts/cleanup-test-db.ts",
+    "test:litellm": "node scripts/test-litellm-connectivity.js",
+    "test:llm": "node scripts/test-llm-service.js",
+    "test:azure": "node scripts/test-azure-openai-fallback.js",
+    "start:litellm": "litellm --config litellm.config.yaml",
+    "start:litellm:debug": "litellm --config litellm.config.yaml --detailed_debug",
+    "check:hooks": "node scripts/check-react-hooks.js",
+    "fix:hooks": "node scripts/fix-react-hooks.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",

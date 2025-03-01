@@ -10,7 +10,8 @@ import "./styles/sheet.css";
 import "./styles/chat.css";
 import Home from "./pages/home";
 import NotFound from "./pages/not-found";
-import { ErrorBoundary } from "./components/ui/error-boundary";
+import { ErrorBoundary, useErrorFallback } from "./components/ui/error-boundary";
+import { NotificationListener } from "./components/ui/notification";
 
 function Router() {
   return (
@@ -22,13 +23,20 @@ function Router() {
 }
 
 function App() {
+  // Create a custom error fallback for the root error boundary
+  const appErrorFallback = useErrorFallback(
+    "Application Error",
+    "Something went wrong with the application. Please refresh the page to try again."
+  );
+  
   return (
-    <ErrorBoundary>
+    <ErrorBoundary fallback={appErrorFallback} componentName="App">
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <SmartsheetProvider>
             <Router />
             <FullscreenSheetIdModal />
+            <NotificationListener />
             <Toaster />
           </SmartsheetProvider>
         </AuthProvider>
