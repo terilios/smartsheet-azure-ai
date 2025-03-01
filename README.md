@@ -192,6 +192,29 @@ This will:
 - Drop the test database if it exists
 - Remove TEST_DATABASE_URL from your server/.env file
 
+## Sheet Viewer Component
+
+The application includes a sheet viewer component that displays Smartsheet data in a tabular format. This component provides features such as:
+
+- Sorting and filtering of sheet data
+- Cell selection and alignment controls
+- Column resizing
+- Text wrapping options
+- Real-time updates when sheet data changes
+
+### Recent Fixes
+
+The sheet viewer component has been updated to fix several rendering issues:
+
+1. **Fixed Infinite Rendering Loop**: Resolved an issue in the SmartsheetFrame component that was causing an infinite loop of renders. This was fixed by using a ref to track session creation attempts and removing `currentSessionId` from the dependency array.
+
+2. **Fixed React Hooks Rules Violation**: Addressed a "Rendered fewer hooks than expected" error by ensuring all hooks are called unconditionally at the top of the component, before any conditional returns.
+
+For detailed information about these fixes, see:
+
+- [Sheet Viewer Infinite Loop Fix](docs/sheet-viewer-infinite-loop-fix.md)
+- [Sheet Viewer Hooks Fix](docs/sheet-viewer-hooks-fix.md)
+
 ## Smartsheet Integration
 
 The application integrates with the Smartsheet API to access and manipulate sheet data. This integration requires proper configuration and permissions.
